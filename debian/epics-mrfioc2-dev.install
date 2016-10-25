@@ -1,0 +1,6 @@
+usr/lib/epics/lib/linux-*/lib*.so
+usr/lib/epics/lib/linux-*-debug/lib*.so.*
+usr/lib/epics/lib/linux-*/lib*.a
+usr/lib/epics/dbd/*.dbd
+usr/lib/epics/db/*.db
+usr/lib/epics/include

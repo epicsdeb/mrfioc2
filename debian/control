@@ -1,0 +1,77 @@
+Source: mrfioc2
+Section: devel
+Priority: extra
+Maintainer: Michael Davidsaver <mdavidsaver@gmail.com>
+Build-Depends: debhelper (>= 7), epics-debhelper (>= 6~),
+               epics-dev (>= 3.14.11-2),
+               epics-msi,
+               rtems-devlib2-mvme2100,
+               rtems-devlib2-mvme2307,
+               rtems-devlib2-mvme3100,
+               rtems-devlib2-mvme5500,
+XS-Rtems-Build-Depends: rtems-epics rtems-devlib2
+X-Epics-Targets: .*
+Standards-Version: 3.8.0
+Homepage: http://epics.sf.net/mrfioc2
+
+Package: libmrfioc2.8
+Architecture: any
+Section: libs
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: EPICS Driver for MRF timing cards
+ EPICS Driver for Micro Research Finland
+ event timing system cards.
+ .
+ This package provides shared libraries
+
+Package: epics-mrfioc2-dev
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+         libmrfioc2.8 (= ${binary:Version}),
+Description: EPICS Driver for MRF timing cards
+ EPICS Driver for Micro Research Finland
+ event timing system cards.
+ .
+ This package provides files needed to build an
+ IOC with the iocStats support.
+
+
+Package: rtems-mrfioc2-mvme2100
+Architecture: all
+Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
+         epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
+Description: EPICS Driver for MRF timing cards
+ EPICS Driver for Micro Research Finland
+ event timing system cards.
+ .
+ This package contains support for the MVME2100 PowerPC based VME SBC.
+
+Package: rtems-mrfioc2-mvme2307
+Architecture: all
+Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
+         epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
+Description: EPICS Driver for MRF timing cards
+ EPICS Driver for Micro Research Finland
+ event timing system cards.
+ .
+ This package contains support for the MVME2307 PowerPC based VME SBC.
+
+Package: rtems-mrfioc2-mvme3100
+Architecture: all
+Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
+         epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
+Description: EPICS Driver for MRF timing cards
+ EPICS Driver for Micro Research Finland
+ event timing system cards.
+ .
+ This package contains support for the MVME3100 PowerPC based VME SBC.
+
+Package: rtems-mrfioc2-mvme5500
+Architecture: all
+Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
+         epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
+Description: EPICS Driver for MRF timing cards
+ EPICS Driver for Micro Research Finland
+ event timing system cards.
+ .
+ This package contains support for the MVME5500 PowerPC based VME SBC.

@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE=1
+
+%:
+	dh $@ --with epics -Sepicsmake
+
+override_dh_auto_clean:
+	echo "EPICS_BASE=/usr/lib/epics" > configure/RELEASE.local
+	dh_auto_clean
+	rm -f configure/RELEASE.local
+
+override_dh_auto_build:
+	echo "EPICS_BASE=/usr/lib/epics" > configure/RELEASE.local
+	dh_auto_build
+
+override_dh_install:
+	rm -f  debian/tmp/usr/lib/epics/configure/RELEASE.local
+	# don't package example IOCs
+	rm -rf debian/tmp/usr/lib/epics/bin
+	rm -f  debian/tmp/usr/lib/epics/dbd/evgMrm.dbd
+	rm -f  debian/tmp/usr/lib/epics/dbd/mrf.dbd
+	dh_install --fail-missing
