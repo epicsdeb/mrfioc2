@@ -3,7 +3,7 @@
 export DH_VERBOSE=1
 
 %:
-	dh $@ --with epics --with dkms -Sepicsmake
+	dh $@ --with epics --with dkms -Sepicsmake --parallel
 
 override_dh_auto_clean:
 	echo "EPICS_BASE=/usr/lib/epics" > configure/RELEASE.local
@@ -21,3 +21,6 @@ override_dh_install:
 	rm -f  debian/tmp/usr/lib/epics/dbd/evgMrm.dbd
 	rm -f  debian/tmp/usr/lib/epics/dbd/mrf.dbd
 	dh_install --fail-missing
+
+override_dh_dkms:
+	dh_dkms -V 1

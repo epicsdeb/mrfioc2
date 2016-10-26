@@ -10,7 +10,7 @@ Build-Depends: debhelper (>= 9), epics-debhelper (>= 6~),
                rtems-devlib2-mvme3100,
                rtems-devlib2-mvme5500,
                dkms,
-XS-Rtems-Build-Depends: rtems-epics rtems-devlib2
+XS-Rtems-Build-Depends: rtems-epics, rtems-devlib2
 X-Epics-Targets: .*
 Standards-Version: 3.8.0
 Homepage: http://epics.sf.net/mrfioc2
