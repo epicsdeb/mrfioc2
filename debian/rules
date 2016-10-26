@@ -3,7 +3,7 @@
 export DH_VERBOSE=1
 
 %:
-	dh $@ --with epics -Sepicsmake
+	dh $@ --with epics --with dkms -Sepicsmake
 
 override_dh_auto_clean:
 	echo "EPICS_BASE=/usr/lib/epics" > configure/RELEASE.local

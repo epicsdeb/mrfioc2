@@ -2,13 +2,14 @@ Source: mrfioc2
 Section: devel
 Priority: extra
 Maintainer: Michael Davidsaver <mdavidsaver@gmail.com>
-Build-Depends: debhelper (>= 7), epics-debhelper (>= 6~),
+Build-Depends: debhelper (>= 9), epics-debhelper (>= 6~),
                epics-dev (>= 3.14.11-2),
                epics-msi,
                rtems-devlib2-mvme2100,
                rtems-devlib2-mvme2307,
                rtems-devlib2-mvme3100,
                rtems-devlib2-mvme5500,
+               dkms,
 XS-Rtems-Build-Depends: rtems-epics rtems-devlib2
 X-Epics-Targets: .*
 Standards-Version: 3.8.0
@@ -28,6 +29,7 @@ Package: epics-mrfioc2-dev
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
          libmrfioc2.8 (= ${binary:Version}),
+Suggests: mrf-dkms
 Description: EPICS Driver for MRF timing cards
  EPICS Driver for Micro Research Finland
  event timing system cards.
@@ -35,6 +37,15 @@ Description: EPICS Driver for MRF timing cards
  This package provides files needed to build an
  IOC with the iocStats support.
 
+Package: mrf-dkms
+Architecture: all
+Depends: ${misc:Depends},
+Description: EPICS Driver for MRF timing cards
+ EPICS Driver for Micro Research Finland
+ event timing system cards.
+ .
+ This package builds a Linux kernel module for some PCI/PCIe
+ MRF cards.
 
 Package: rtems-mrfioc2-mvme2100
 Architecture: all
