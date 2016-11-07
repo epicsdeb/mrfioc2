@@ -29,6 +29,7 @@ Package: epics-mrfioc2-dev
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
          libmrfioc2.8 (= ${binary:Version}),
+         epics-devlib2-dev,
 Suggests: mrf-dkms
 Description: EPICS Driver for MRF timing cards
  EPICS Driver for Micro Research Finland
