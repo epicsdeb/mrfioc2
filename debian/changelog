@@ -1,8 +1,8 @@
-mrfioc2 (2.1.0-2) UNRELEASED; urgency=medium
+mrfioc2 (2.1.0-2) unstable; urgency=medium
 
   * Patch to remove verbose kernel module prints
 
- -- Michael Davidsaver <mdavidsaver@gmail.com>  Wed, 09 Nov 2016 17:20:20 -0500
+ -- Michael Davidsaver <mdavidsaver@gmail.com>  Thu, 17 Nov 2016 14:02:50 -0500
 
 mrfioc2 (2.1.0-1) unstable; urgency=medium
 
