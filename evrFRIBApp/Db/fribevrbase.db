@@ -1,0 +1,175 @@
+
+# Settings
+
+record(bo, "$(P)SIMBON_CMD") {
+  field(ZNAM, "Off")
+  field(ONAM, "Beam On")
+  field(OUT , "$(P)Cnf_CSET_.B3 PP")
+  field(VAL , "0")
+  field(PINI, "YES")
+  info(autosaveFields_pass0, "VAL")
+}
+
+record(bo, "$(P)SIMEVG_CMD") {
+  field(ZNAM, "Normal")
+  field(ONAM, "Sim EVG")
+  field(OSV , "MINOR")
+  field(OUT , "$(P)Cnf_CSET_.B2 PP")
+  field(VAL , "0")
+  field(PINI, "YES")
+  info(autosaveFields_pass0, "VAL")
+}
+
+record(bo, "$(P)SIMFPS_CMD") {
+  field(ZNAM, "Normal")
+  field(ONAM, "Sim FPS")
+  field(OSV , "MINOR")
+  field(OUT , "$(P)Cnf_CSET_.B1 PP")
+  field(VAL , "0")
+  field(PINI, "YES")
+  info(autosaveFields_pass0, "VAL")
+}
+
+record(bo, "$(P)EVTBIST_CMD") {
+  field(ZNAM, "Idle")
+  field(ONAM, "Run")
+  field(OUT , "$(P)Cnf_CSET_.B0 PP")
+  field(VAL , "1")
+  field(PINI, "YES")
+  info(autosaveFields_pass0, "VAL")
+}
+
+record(mbboDirect, "$(P)Cnf_CSET_") {
+  field(OUT , "$(P)Cnf_CSET PP")
+  info(autosaveFields_pass0, "B0 B1 B2 B3")
+}
+
+record(longout, "$(P)Cnf_CSET") {
+  field(DTYP, "Obj Prop uint32")
+  field(OUT , "@OBJ=$(OBJ), PROP=Config")
+}
+
+
+record(bo, "$(P)FrcNOK_CMD") {
+  field(ZNAM, "Idle")
+  field(ONAM, "Force NOK")
+  field(HIGH, "0.1")
+  field(OUT , "$(P)Cmd_CSET_.B4 PP")
+  field(VAL , "0")
+  field(PINI, "YES")
+  info(autosaveFields_pass0, "VAL")
+}
+
+record(bo, "$(P)ClrNOK_CMD") {
+  field(ZNAM, "Idle")
+  field(ONAM, "Clear NOK")
+  field(HIGH, "0.1")
+  field(OUT , "$(P)Cmd_CSET_.B3 PP")
+  field(VAL , "0")
+  field(PINI, "YES")
+  info(autosaveFields_pass0, "VAL")
+}
+
+record(bo, "$(P)FrcNPMT_CMD") {
+  field(ZNAM, "Idle")
+  field(ONAM, "Force NPERMIT")
+  field(HIGH, "0.1")
+  field(OUT , "$(P)Cmd_CSET_.B2 PP")
+  field(VAL , "0")
+  field(PINI, "YES")
+  info(autosaveFields_pass0, "VAL")
+}
+
+record(mbboDirect, "$(P)Cmd_CSET_") {
+  field(OUT , "$(P)Cmd_CSET PP")
+  info(autosaveFields_pass0, "B2 B3 B4")
+}
+
+record(longout, "$(P)Cmd_CSET") {
+  field(DTYP, "Obj Prop uint32")
+  field(OUT , "@OBJ=$(OBJ), PROP=Command")
+}
+
+
+# readbacks
+
+record(longin, "$(P)MCyc_RD") {
+  field(DTYP, "Obj Prop uint32")
+  field(INP , "@OBJ=$(OBJ), PROP=machineCycles")
+  field(SCAN, ".1 second")
+  field(FLNK, "$(P)FPSComm_RD")
+}
+
+record(longin, "$(P)FPSComm_RD") {
+  field(DTYP, "Obj Prop uint32")
+  field(INP , "@OBJ=$(OBJ), PROP=FPSCommCnt")
+  field(FLNK, "$(P)FPSStatus_RD")
+}
+
+record(mbbiDirect, "$(P)FPSStatus_RD") {
+  field(DTYP, "Obj Prop uint32")
+  field(INP , "@OBJ=$(OBJ), PROP=FPSStatus")
+  field(FLNK, "$(P)FPSNPMT_RD")
+}
+
+record(bi, "$(P)FPSNPMT_RD") {
+  field(DESC, "NPERMIT")
+  field(INP , "$(P)FPSStatus_RD.B0 NPP MSI")
+  field(ZNAM, "OK")
+  field(ONAM, "Error")
+  field(OSV , "MAJOR")
+  field(TSEL, "$(P)FPSStatus_RD.TIME")
+  field(FLNK, "$(P)FPSNOK_RD")
+}
+
+record(bi, "$(P)FPSNOK_RD") {
+  field(DESC, "Not OK out")
+  field(INP , "$(P)FPSStatus_RD.B1 NPP MSI")
+  field(ZNAM, "OK")
+  field(ONAM, "Trip")
+  field(OSV , "MAJOR")
+  field(TSEL, "$(P)FPSStatus_RD.TIME")
+  field(FLNK, "$(P)FPSNOKL_RD")
+}
+
+record(bi, "$(P)FPSNOKL_RD") {
+  field(DESC, "Not OK out latched")
+  field(INP , "$(P)FPSStatus_RD.B2 NPP MSI")
+  field(ZNAM, "OK")
+  field(ONAM, "Trip")
+  field(OSV , "MAJOR")
+  field(TSEL, "$(P)FPSStatus_RD.TIME")
+  field(FLNK, "$(P)FPSNOKIN_RD")
+}
+
+record(bi, "$(P)FPSNOKIN_RD") {
+  field(DESC, "Not OK in")
+  field(INP , "$(P)FPSStatus_RD.B3 NPP MSI")
+  field(ZNAM, "OK")
+  field(ONAM, "Trip")
+  field(OSV , "MAJOR")
+  field(TSEL, "$(P)FPSStatus_RD.TIME")
+  field(FLNK, "$(P)FPSPRSNT_RD")
+}
+
+record(bi, "$(P)FPSPRSNT_RD") {
+  field(DESC, "Presense")
+  field(ZNAM, "Missing")
+  field(ONAM, "Present")
+  field(ZSV , "MAJOR")
+  field(INP , "$(P)FPSStatus_RD.B4 NPP MSI")
+  field(TSEL, "$(P)FPSStatus_RD.TIME")
+  field(FLNK, "$(P)FPSSource_RD")
+}
+
+record(longin, "$(P)FPSSource_RD") {
+  field(DTYP, "Obj Prop uint32")
+  field(INP , "@OBJ=$(OBJ), PROP=FPSSource")
+  field(FLNK, "$(P)BeamOnTime_RD")
+}
+
+record(longin, "$(P)BeamOnTime_RD") {
+  field(DTYP, "Obj Prop uint32")
+  field(INP , "@OBJ=$(OBJ), PROP=BeamOnTime")
+  field(FLNK, "")
+}

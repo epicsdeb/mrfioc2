@@ -6,7 +6,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <stdlib.h>
@@ -64,7 +64,7 @@ long add_record(struct dbCommon *prec, struct link* link)
 try {
     assert(link->type==INST_IO);
 
-    std::auto_ptr<priv> p(new priv);
+    mrf::auto_ptr<priv> p(new priv);
     p->event=0;
 
     if (linkOptionsStore(eventdef, p.get(), link->value.instio.string, 0))
@@ -188,7 +188,7 @@ try {
     {
         char *end = prec->val;
         unsigned evt = strtoul(prec->val, &end, 0);
-        if ( evt==ULONG_MAX || *end!='\0' || evt<0 ) {
+        if ( evt==ULONG_MAX || *end!='\0' ) {
             (void)recGblSetSevr(prec, WRITE_ALARM, INVALID_ALARM);
         } else {
             post_event(evt);

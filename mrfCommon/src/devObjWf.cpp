@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <cstdio>
@@ -56,7 +56,7 @@ readop(waveformRecord* prec)
 
 static long read_waveform(waveformRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     switch(prec->ftvl) {
     case menuFtypeCHAR:
@@ -82,10 +82,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 OBJECT_DSET(WFIn,
@@ -106,7 +103,7 @@ writeop(waveformRecord* prec)
 
 static long write_waveform(waveformRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
 
     switch(prec->ftvl) {
@@ -133,10 +130,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 OBJECT_DSET(WFOut,

@@ -13,6 +13,8 @@
 
 #include <epicsExit.h>
 #include <epicsThread.h>
+#include <epicsStdio.h>
+#include <epicsString.h>
 
 #include <iocsh.h>
 #include <drvSup.h>
@@ -49,10 +51,10 @@ static epicsUInt8 vme_level_mask = 0;
 
 static const
 struct VMECSRID vmeEvgIDs[] = {
-    {MRF_VME_IEEE_OUI,
-     MRF_VME_EVG_BID|MRF_SERIES_230,
-     VMECSRANY},
-    VMECSR_END
+{MRF_VME_IEEE_OUI,
+    MRF_VME_EVG_BID|MRF_SERIES_230,
+    VMECSRANY},
+VMECSR_END
 };
 
 static bool
@@ -61,15 +63,7 @@ enableIRQ(mrf::Object* obj, void*) {
     if(!evg)
         return true;
 
-	WRITE32(evg->getRegAddr(), IrqEnable,
-             EVG_IRQ_PCIIE          | //PCIe interrupt enable,
-             EVG_IRQ_ENABLE         |
-             EVG_IRQ_EXT_INP        |
-             EVG_IRQ_STOP_RAM(0)    |
-             EVG_IRQ_STOP_RAM(1)    |
-             EVG_IRQ_START_RAM(0)   |
-             EVG_IRQ_START_RAM(1)
-    );
+    evg->enableIRQ();
 
     return true;
 }
@@ -123,7 +117,7 @@ inithooks(initHookState state) {
 void checkVersion(volatile epicsUInt8 *base, unsigned int required,
                   unsigned int recommended)
 {
-	epicsUInt32 type, ver;
+    epicsUInt32 type, ver;
     epicsUInt32 v = READ32(base, FPGAVersion);
 
     if(v & FPGAVersion_ZERO_MASK)
@@ -149,11 +143,11 @@ void checkVersion(volatile epicsUInt8 *base, unsigned int required,
 extern "C"
 epicsStatus
 mrmEvgSetupVME (
-    const char* id,         // Card Identifier
-    epicsInt32  slot,       // VME slot
-    epicsUInt32 vmeAddress, // Desired VME address in A24 space
-    epicsInt32  irqLevel,   // Desired interrupt level
-    epicsInt32  irqVector)  // Desired interrupt vector number
+        const char* id,         // Card Identifier
+        epicsInt32  slot,       // VME slot
+        epicsUInt32 vmeAddress, // Desired VME address in A24 space
+        epicsInt32  irqLevel,   // Desired interrupt level
+        epicsInt32  irqVector)  // Desired interrupt vector number
 {
     volatile epicsUInt8* regCpuAddr = 0;
     struct VMECSRID info;
@@ -174,8 +168,8 @@ mrmEvgSetupVME (
         }
 
         /*csrCpuAddr is VME-CSR space CPU address for the board*/
-        volatile unsigned char* csrCpuAddr =                
-                                    devCSRTestSlot(vmeEvgIDs,slot,&info);
+        volatile unsigned char* csrCpuAddr =
+                devCSRTestSlot(vmeEvgIDs,slot,&info);
 
         if(!csrCpuAddr) {
             errlogPrintf("No EVG in slot %d\n",slot);
@@ -184,7 +178,7 @@ mrmEvgSetupVME (
 
         printf("##### Setting up MRF EVG in VME Slot %d #####\n",slot);
         printf("Found Vendor: %08x\nBoard: %08x\nRevision: %08x\n",
-                info.vendor, info.board, info.revision);
+               info.vendor, info.board, info.revision);
         
         epicsUInt32 xxx = CSRRead32(csrCpuAddr + CSR_FN_ADER(1));
         if(xxx)
@@ -209,12 +203,12 @@ mrmEvgSetupVME (
 
         /*Register VME address and get corresponding CPU address */
         int status = devRegisterAddress (
-            Description,                           // Event Generator card description
-            atVMEA24,                              // A24 Address space
-            vmeAddress,                            // Physical address of register space
-            EVG_REGMAP_SIZE,                       // Size of card's register space
-            (volatile void **)(void *)&regCpuAddr  // Local address of card's register map
-        );    
+                    Description,                           // Event Generator card description
+                    atVMEA24,                              // A24 Address space
+                    vmeAddress,                            // Physical address of register space
+                    EVG_REGMAP_SIZE,                       // Size of card's register space
+                    (volatile void **)(void *)&regCpuAddr  // Local address of card's register map
+                    );
 
         if(status) {
             errlogPrintf("Failed to map VME address %08x\n", vmeAddress);
@@ -239,9 +233,9 @@ mrmEvgSetupVME (
             CSRWrite8(csrCpuAddr + MRF_UCSR_DEFAULT + UCSR_IRQ_VECTOR, irqVector&0xff);
 
             printf("IRQ Level: %d\nIRQ Vector: %d\n",
-                CSRRead8(csrCpuAddr + MRF_UCSR_DEFAULT + UCSR_IRQ_LEVEL),
-                CSRRead8(csrCpuAddr + MRF_UCSR_DEFAULT + UCSR_IRQ_VECTOR)
-            );
+                   CSRRead8(csrCpuAddr + MRF_UCSR_DEFAULT + UCSR_IRQ_LEVEL),
+                   CSRRead8(csrCpuAddr + MRF_UCSR_DEFAULT + UCSR_IRQ_VECTOR)
+                   );
 
 
             printf("csrCpuAddr : %p\nregCpuAddr : %p\n",csrCpuAddr, regCpuAddr);
@@ -252,14 +246,14 @@ mrmEvgSetupVME (
 
             // VME IRQ level will be enabled later during iocInit()
             vme_level_mask |= 1 << ((irqLevel&0x7)-1);
-    
+
             /*Connect Interrupt handler to vector*/
             if(devConnectInterruptVME(irqVector & 0xff, &evgMrm::isr_vme, evg)){
                 errlogPrintf("ERROR:Failed to connect VME IRQ vector %d\n"
-                                                         ,irqVector&0xff);
+                             ,irqVector&0xff);
                 delete evg;
                 return -1;
-            }    
+            }
         }
 
         errlogFlush();
@@ -308,6 +302,7 @@ static bool checkUIOVersion(int,int,int*) {return false;}
 
 static const epicsPCIID
 mrmevgs[] = {
+    DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_PLX_9030, PCI_VENDOR_ID_PLX,PCI_SUBDEVICE_ID_MRF_PXIEVG_220, PCI_VENDOR_ID_MRF),
     DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_PLX_9030, PCI_VENDOR_ID_PLX,PCI_DEVICE_ID_MRF_PXIEVG230, PCI_VENDOR_ID_MRF),
     DEVPCI_DEVICE_VENDOR(PCI_DEVICE_ID_MRF_CPCIEVG300, PCI_VENDOR_ID_MRF),
     DEVPCI_END
@@ -316,23 +311,29 @@ mrmevgs[] = {
 extern "C"
 epicsStatus
 mrmEvgSetupPCI (
-		const char* id,         // Card Identifier
-		int b,       			// Bus number
-		int d, 					// Device number
-		int f)   				// Function number
+        const char* id,         // Card Identifier
+        const char *spec,   	// ID spec. or Bus number
+        int d, 					// Device number
+        int f)   				// Function number
 {
-    bus_configuration bus;
+    if(d!=0 || f!=0) {
+        std::istringstream strm(spec);
+        unsigned B =0xf;
+        strm >> B;
+        char buf[40];
+        epicsSnprintf(buf, sizeof(buf), "%x:%x.%x", B, d, f);
+        buf[sizeof(buf)-1] = '\0';
+        spec = epicsStrDup(buf);
+        fprintf(stderr, "Deprecated call.  Replace with:\n"
+                        "  mrmEvgSetupPCI(\"%s\", \"%s\")\n",
+                id, spec);
+    }
 
-    bus.busType = busType_pci;
-    bus.pci.bus = b;
-    bus.pci.device = d;
-    bus.pci.function = f;
-
-	try {
-		if (mrf::Object::getObject(id)) {
-			errlogPrintf("ID %s already in use\n", id);
-			return -1;
-		}
+    try {
+        if (mrf::Object::getObject(id)) {
+            errlogPrintf("ID %s already in use\n", id);
+            return -1;
+        }
 
         /* Linux only
          * kernel driver interface version.
@@ -344,32 +345,37 @@ mrmEvgSetupPCI (
         if(checkUIOVersion(1,2,&kifacever))
             return -1;
 
-		/* Find PCI device from devLib2 */
-		const epicsPCIDevice *cur = 0;
-		if (devPCIFindBDF(mrmevgs, b, d, f, &cur, 0)) {
-			printf("PCI Device not found\n");
-			return -1;
-		}
+        /* Find PCI device from devLib2 */
+        const epicsPCIDevice *cur = 0;
+        if (devPCIFindSpec(mrmevgs, spec, &cur, 0)) {
+            printf("PCI Device not found\n");
+            return -1;
+        }
 
-		printf("Device %s  %u:%u.%u\n", id, cur->bus, cur->device,
-				cur->function);
-		printf("Using IRQ %u\n", cur->irq);
+        bus_configuration bus;
 
-		/* MMap BAR0(plx) and BAR2(EVG)*/
-		volatile epicsUInt8 *BAR_plx, *BAR_evg;
+        bus.busType = busType_pci;
+        bus.pci.dev = cur;
+
+        printf("Device %s  %u:%u.%u\n", id, cur->bus, cur->device,
+               cur->function);
+        printf("Using IRQ %u\n", cur->irq);
+
+        /* MMap BAR0(plx) and BAR2(EVG)*/
+        volatile epicsUInt8 *BAR_plx, *BAR_evg;
 
         if (devPCIToLocalAddr(cur, 0, (volatile void**) (void *) &BAR_plx, 0)) {
             errlogPrintf("Failed to map BARs 0\n");
-			return -1;
-		}
+            return -1;
+        }
         if (!BAR_plx) {
             errlogPrintf("BAR0 mapped to zero? (%08lx)\n",
-                    (unsigned long) BAR_plx);
-			return -1;
-		}
+                         (unsigned long) BAR_plx);
+            return -1;
+        }
 
         switch(cur->id.device) {
-        case PCI_DEVICE_ID_PLX_9030: /* cPCI-EVG-230 */
+        case PCI_DEVICE_ID_PLX_9030: /* cPCI-EVG-220 and cPCI-EVG-230 */
             if (devPCIToLocalAddr(cur, 2, (volatile void**) (void *) &BAR_evg, 0)) {
                 errlogPrintf("Failed to map BARs 2\n");
                 return -1;
@@ -409,18 +415,14 @@ mrmEvgSetupPCI (
             return -1;
         }
 
-		printf("FPGA version: %08x\n", READ32(BAR_evg, FPGAVersion));
+        printf("FPGA version: %08x\n", READ32(BAR_evg, FPGAVersion));
         checkVersion(BAR_evg, 3, 8);
 
+        /*Disable the interrupts and enable them at the end of iocInit via initHooks*/
+        WRITE32(BAR_evg, IrqFlag, READ32(BAR_evg, IrqFlag));
+        WRITE32(BAR_evg, IrqEnable, 0);
+
         evgMrm* evg = new evgMrm(id, bus, BAR_evg, cur);
-
-		evg->getSeqRamMgr()->getSeqRam(0)->disable();
-		evg->getSeqRamMgr()->getSeqRam(1)->disable();
-
-
-		/*Disable the interrupts and enable them at the end of iocInit via initHooks*/
-		WRITE32(BAR_evg, IrqFlag, READ32(BAR_evg, IrqFlag));
-		WRITE32(BAR_evg, IrqEnable, 0);
 
 #if !defined(__linux__) && !defined(_WIN32)
         if(cur->id.device==PCI_DEVICE_ID_PLX_9030) {
@@ -460,110 +462,31 @@ mrmEvgSetupPCI (
 #ifdef __linux__
         evg->isrLinuxPvt = (void*) cur;
 #endif
+        int ret;
+        /*Connect Interrupt handler to isr thread*/
+        if ((ret=devPCIConnectInterrupt(cur, &evgMrm::isr_pci, (void*) evg, 0))!=0) {//devConnectInterruptVME(irqVector & 0xff, &evgMrm::isr, evg)){
+            char buf[80];
+            errSymLookup(ret, buf, sizeof(buf));
+            errlogPrintf("ERROR:Failed to connect PCI interrupt. err (%d) %s\n", ret, buf);
+            delete evg;
+            return -1;
+        } else {
+            printf("PCI interrupt connected!\n");
+        }
 
-		/*Connect Interrupt handler to isr thread*/
-		if (devPCIConnectInterrupt(cur, &evgMrm::isr_pci, (void*) evg, 0)) {//devConnectInterruptVME(irqVector & 0xff, &evgMrm::isr, evg)){
-			errlogPrintf("ERROR:Failed to connect PCI interrupt\n");
-			delete evg;
-			return -1;
-		} else {
-			printf("PCI interrupt connected!\n");
-		}
+        return 0;
 
-		return 0;
-
-	} catch (std::exception& e) {
-		errlogPrintf("Error: %s\n", e.what());
-	}
-	return -1;
+    } catch (std::exception& e) {
+        errlogPrintf("Error: %s\n", e.what());
+    }
+    return -1;
 } //mrmEvgSetupPCI
-
-#if !defined(_WIN32) && !defined(__rtems__)
-/*
- * Fake timestamp source for testing without real hardware timestamp source (eg. GPS recevier)
- * 
- * Author: tslejko
- */
-static
-void mrmEvgSoftTimeThread(void* pvt) {
-    evgMrm* evg = static_cast<evgMrm*>(pvt);
-
-    if (!evg) {
-        errlogPrintf("mrmEvgSoftTimestamp: Could not find EVG!\n");
-    }
-    evgSoftEvt *sevt = evg->getSoftEvt();
-
-    while (1) {
-        // fetch time of next second to be shifted
-        epicsUInt32 data = evg->sendTimestamp();
-        if (!data){
-            errlogPrintf("mrmEvgSoftTimestamp: Could not retrive timestamp...\n");
-            epicsThreadSleep(1);
-            continue;
-        }
-
-        //Send out event reset to latch previously shifted timestamp
-        sevt->setEvtCode(MRF_EVENT_TS_COUNTER_RST);
-
-        //Shift out next time
-        for (int i = 0; i < 32; data <<= 1, i++) {
-            if (data & 0x80000000)
-                sevt->setEvtCode(MRF_EVENT_TS_SHIFT_1);
-            else
-                sevt->setEvtCode(MRF_EVENT_TS_SHIFT_0);
-        }
-
-        struct timespec sleep_until_t;
-
-        clock_gettime(CLOCK_REALTIME,&sleep_until_t); //Get current time
-        /* Sleep until next full second */
-        sleep_until_t.tv_nsec=0;
-        sleep_until_t.tv_sec++;
-
-        clock_nanosleep(CLOCK_REALTIME,TIMER_ABSTIME,&sleep_until_t,0);
-    }
-}
-#else
-static
-void mrmEvgSoftTimeThread(void* pvt) {}
-#endif
-
-void mrmEvgSoftTime(const char *obj) {
-    try {
-        printf("Starting EVG Software based time provider...\n");
-
-        if(!obj) return;
-
-        evgMrm* evg = dynamic_cast<evgMrm*>(mrf::Object::getObject(obj));
-        if(!evg){
-            errlogPrintf("EVG '%s' does not exist!\n", obj);
-        }
-
-        epicsThreadCreate("EVG_TimestampTestThread",90,
-                           epicsThreadGetStackSize(epicsThreadStackSmall),
-                           mrmEvgSoftTimeThread,static_cast<void*>(evg));
-    } catch(std::exception& e){
-        fprintf(stderr, "Error: %s\n", e.what());
-    }
-}
-
-/*
- *    EPICS Registrar Function for this Module
- */
-static const iocshArg mrmEvgSoftTimeArg0 = { "Card ID", iocshArgString};
-static const iocshArg * const mrmEvgSoftTimeArgs[1] = { &mrmEvgSoftTimeArg0};
-static const iocshFuncDef mrmEvgSoftTimeFuncDef = { "mrmEvgSoftTime", 1, mrmEvgSoftTimeArgs };
-
-static void mrmEvgSoftTimeFunc(const iocshArgBuf *args) {
-    mrmEvgSoftTime(args[0].sval);
-}
-
 
 static const iocshArg mrmEvgSetupVMEArg0 = { "Card ID", iocshArgString };
 static const iocshArg mrmEvgSetupVMEArg1 = { "Slot number", iocshArgInt };
 static const iocshArg mrmEvgSetupVMEArg2 = { "A24 base address", iocshArgInt };
 static const iocshArg mrmEvgSetupVMEArg3 = { "IRQ Level 1-7 (0 - disable)",
-		iocshArgInt };
+                                             iocshArgInt };
 static const iocshArg mrmEvgSetupVMEArg4 = { "IRQ Vector 0-255", iocshArgInt };
 static const iocshArg * const mrmEvgSetupVMEArgs[5] = { &mrmEvgSetupVMEArg0,
                                                         &mrmEvgSetupVMEArg1,
@@ -572,40 +495,38 @@ static const iocshArg * const mrmEvgSetupVMEArgs[5] = { &mrmEvgSetupVMEArg0,
                                                         &mrmEvgSetupVMEArg4 };
 
 static const iocshFuncDef mrmEvgSetupVMEFuncDef = { "mrmEvgSetupVME", 5,
-		mrmEvgSetupVMEArgs };
+                                                    mrmEvgSetupVMEArgs };
 
 static void 
 mrmEvgSetupVMECallFunc(const iocshArgBuf *args) {
     mrmEvgSetupVME(args[0].sval,
-                   args[1].ival,
-                   args[2].ival,
-                   args[3].ival,
-                   args[4].ival);
+            args[1].ival,
+            args[2].ival,
+            args[3].ival,
+            args[4].ival);
 }
 
 static const iocshArg mrmEvgSetupPCIArg0 = { "Card ID", iocshArgString };
-static const iocshArg mrmEvgSetupPCIArg1 = { "B board", iocshArgInt };
+static const iocshArg mrmEvgSetupPCIArg1 = { "spec or B board", iocshArgString };
 static const iocshArg mrmEvgSetupPCIArg2 = { "D device", iocshArgInt };
 static const iocshArg mrmEvgSetupPCIArg3 = { "F function", iocshArgInt };
 
 static const iocshArg * const mrmEvgSetupPCIArgs[4] = { &mrmEvgSetupPCIArg0,
-		&mrmEvgSetupPCIArg1, &mrmEvgSetupPCIArg2, &mrmEvgSetupPCIArg3 };
+                                                        &mrmEvgSetupPCIArg1, &mrmEvgSetupPCIArg2, &mrmEvgSetupPCIArg3 };
 
 static const iocshFuncDef mrmEvgSetupPCIFuncDef = { "mrmEvgSetupPCI", 4,
-		mrmEvgSetupPCIArgs };
+                                                    mrmEvgSetupPCIArgs };
 
 static void mrmEvgSetupPCICallFunc(const iocshArgBuf *args) {
-	mrmEvgSetupPCI(args[0].sval, args[1].ival, args[2].ival, args[3].ival);
+    mrmEvgSetupPCI(args[0].sval, args[1].sval, args[2].ival, args[3].ival);
 
 }
 
 extern "C"{
 static void evgMrmRegistrar() {
-	initHookRegister(&inithooks);
-	iocshRegister(&mrmEvgSetupVMEFuncDef, mrmEvgSetupVMECallFunc);
-	iocshRegister(&mrmEvgSetupPCIFuncDef, mrmEvgSetupPCICallFunc);
-	iocshRegister(&mrmEvgSoftTimeFuncDef, mrmEvgSoftTimeFunc);
-
+    initHookRegister(&inithooks);
+    iocshRegister(&mrmEvgSetupVMEFuncDef, mrmEvgSetupVMECallFunc);
+    iocshRegister(&mrmEvgSetupPCIFuncDef, mrmEvgSetupPCICallFunc);
 }
 
 epicsExportRegistrar(evgMrmRegistrar);
@@ -621,79 +542,79 @@ struct printreg {
     int rsize;
 } printreg[] = {
 #define REGINFO(label, name, size) {label, U##size##_##name, size}
-REGINFO("Status",           Status,           32),
-REGINFO("Control",          Control,          32),
-REGINFO("IrqFlag",          IrqFlag,          32),
-REGINFO("IrqEnable",        IrqEnable,        32),
-REGINFO("AcTrigControl",    AcTrigControl,    32),
-REGINFO("AcTrigMap",        AcTrigMap,        32),
-REGINFO("SwEvent",          SwEvent,          32),
-REGINFO("DataBufferControl",DataBufferControl,32),
-REGINFO("DBusSrc",          DBusSrc,          32),
-REGINFO("FPGAVersion",      FPGAVersion,      32),
-REGINFO("ClockControl",     ClockControl,     32),
-REGINFO("SeqControl(0)",    SeqControl(0),    32),
-REGINFO("SeqControl(1)",    SeqControl(1),    32),
-REGINFO("FracSynthWord",    FracSynthWord,    32),
-REGINFO("TrigEventCtrl(0)", TrigEventCtrl(0), 32),
-REGINFO("TrigEventCtrl(1)", TrigEventCtrl(1), 32),
-REGINFO("TrigEventCtrl(2)", TrigEventCtrl(2), 32),
-REGINFO("TrigEventCtrl(3)", TrigEventCtrl(3), 32),
-REGINFO("TrigEventCtrl(4)", TrigEventCtrl(4), 32),
-REGINFO("TrigEventCtrl(5)", TrigEventCtrl(5), 32),
-REGINFO("TrigEventCtrl(6)", TrigEventCtrl(6), 32),
-REGINFO("TrigEventCtrl(7)", TrigEventCtrl(7), 32),
-REGINFO("MuxControl(0)",    MuxControl(0),    32),
-REGINFO("MuxPrescaler(0)",  MuxPrescaler(0),  32),
-REGINFO("MuxControl(1)",    MuxControl(1),    32),
-REGINFO("MuxPrescaler(1)",  MuxPrescaler(1),  32),
-REGINFO("MuxControl(2)",    MuxControl(2),    32),
-REGINFO("MuxPrescaler(2)",  MuxPrescaler(2),  32),
-REGINFO("MuxControl(3)",    MuxControl(3),    32),
-REGINFO("MuxPrescaler(3)",  MuxPrescaler(3),  32),
-REGINFO("MuxControl(4)",    MuxControl(4),    32),
-REGINFO("MuxPrescaler(4)",  MuxPrescaler(4),  32),
-REGINFO("MuxControl(5)",    MuxControl(5),    32),
-REGINFO("MuxPrescaler(5)",  MuxPrescaler(5),  32),
-REGINFO("MuxControl(6)",    MuxControl(6),    32),
-REGINFO("MuxPrescaler(6)",  MuxPrescaler(6),  32),
-REGINFO("MuxControl(7)",    MuxControl(7),    32),
-REGINFO("MuxPrescaler(7)",  MuxPrescaler(7),  32),
-REGINFO("FrontOutMap(0)",   FrontOutMap(0),   16),
-REGINFO("FrontInMap(0)",    FrontInMap(0),    32),
-REGINFO("FrontInMap(1)",    FrontInMap(1),    32),
-REGINFO("UnivInMap(0)",     UnivInMap(0),     32),
-REGINFO("UnivInMap(1)",     UnivInMap(1),     32),
-REGINFO("RearInMap(12)",    RearInMap(12),    32),
-REGINFO("RearInMap(13)",    RearInMap(13),    32),
-REGINFO("RearInMap(14)",    RearInMap(14),    32),
-REGINFO("RearInMap(15)",    RearInMap(15),    32),
-REGINFO("DataBuffer(0)",    DataBuffer(0),     8),
-REGINFO("DataBuffer(1)",    DataBuffer(1),     8),
-REGINFO("DataBuffer(2)",    DataBuffer(2),     8),
-REGINFO("DataBuffer(3)",    DataBuffer(3),     8),
-REGINFO("DataBuffer(4)",    DataBuffer(4),     8),
-REGINFO("DataBuffer(5)",    DataBuffer(5),     8),
-REGINFO("SeqRamTS(0,0)",    SeqRamTS(0,0),    32),
-REGINFO("SeqRamTS(0,1)",    SeqRamTS(0,1),    32),
-REGINFO("SeqRamTS(0,2)",    SeqRamTS(0,2),    32),
-REGINFO("SeqRamTS(0,3)",    SeqRamTS(0,3),    32),
-REGINFO("SeqRamTS(0,4)",    SeqRamTS(0,4),    32),
-REGINFO("SeqRamEvent(0,0)", SeqRamEvent(0,0), 32),
-REGINFO("SeqRamEvent(0,1)", SeqRamEvent(0,1), 32),
-REGINFO("SeqRamEvent(0,2)", SeqRamEvent(0,2), 32),
-REGINFO("SeqRamEvent(0,3)", SeqRamEvent(0,3), 32),
-REGINFO("SeqRamEvent(0,4)", SeqRamEvent(0,4), 32),
-REGINFO("SeqRamTS(1,0)",    SeqRamTS(1,0),    32),
-REGINFO("SeqRamTS(1,1)",    SeqRamTS(1,1),    32),
-REGINFO("SeqRamTS(1,2)",    SeqRamTS(1,2),    32),
-REGINFO("SeqRamTS(1,3)",    SeqRamTS(1,3),    32),
-REGINFO("SeqRamTS(1,4)",    SeqRamTS(1,4),    32),
-REGINFO("SeqRamEvent(1,0)", SeqRamEvent(1,0), 32),
-REGINFO("SeqRamEvent(1,1)", SeqRamEvent(1,1), 32),
-REGINFO("SeqRamEvent(1,2)", SeqRamEvent(1,2), 32),
-REGINFO("SeqRamEvent(1,3)", SeqRamEvent(1,3), 32),
-REGINFO("SeqRamEvent(1,4)", SeqRamEvent(1,4), 32),
+    REGINFO("Status",           Status,           32),
+    REGINFO("Control",          Control,          32),
+    REGINFO("IrqFlag",          IrqFlag,          32),
+    REGINFO("IrqEnable",        IrqEnable,        32),
+    REGINFO("AcTrigControl",    AcTrigControl,    32),
+    REGINFO("AcTrigMap",        AcTrigMap,        32),
+    REGINFO("SwEvent",          SwEvent,          32),
+    REGINFO("DataBufferControl",DataBufferControl,32),
+    REGINFO("DBusSrc",          DBusSrc,          32),
+    REGINFO("FPGAVersion",      FPGAVersion,      32),
+    REGINFO("ClockControl",     ClockControl,     32),
+    REGINFO("SeqControl(0)",    SeqControl(0),    32),
+    REGINFO("SeqControl(1)",    SeqControl(1),    32),
+    REGINFO("FracSynthWord",    FracSynthWord,    32),
+    REGINFO("TrigEventCtrl(0)", TrigEventCtrl(0), 32),
+    REGINFO("TrigEventCtrl(1)", TrigEventCtrl(1), 32),
+    REGINFO("TrigEventCtrl(2)", TrigEventCtrl(2), 32),
+    REGINFO("TrigEventCtrl(3)", TrigEventCtrl(3), 32),
+    REGINFO("TrigEventCtrl(4)", TrigEventCtrl(4), 32),
+    REGINFO("TrigEventCtrl(5)", TrigEventCtrl(5), 32),
+    REGINFO("TrigEventCtrl(6)", TrigEventCtrl(6), 32),
+    REGINFO("TrigEventCtrl(7)", TrigEventCtrl(7), 32),
+    REGINFO("MuxControl(0)",    MuxControl(0),    32),
+    REGINFO("MuxPrescaler(0)",  MuxPrescaler(0),  32),
+    REGINFO("MuxControl(1)",    MuxControl(1),    32),
+    REGINFO("MuxPrescaler(1)",  MuxPrescaler(1),  32),
+    REGINFO("MuxControl(2)",    MuxControl(2),    32),
+    REGINFO("MuxPrescaler(2)",  MuxPrescaler(2),  32),
+    REGINFO("MuxControl(3)",    MuxControl(3),    32),
+    REGINFO("MuxPrescaler(3)",  MuxPrescaler(3),  32),
+    REGINFO("MuxControl(4)",    MuxControl(4),    32),
+    REGINFO("MuxPrescaler(4)",  MuxPrescaler(4),  32),
+    REGINFO("MuxControl(5)",    MuxControl(5),    32),
+    REGINFO("MuxPrescaler(5)",  MuxPrescaler(5),  32),
+    REGINFO("MuxControl(6)",    MuxControl(6),    32),
+    REGINFO("MuxPrescaler(6)",  MuxPrescaler(6),  32),
+    REGINFO("MuxControl(7)",    MuxControl(7),    32),
+    REGINFO("MuxPrescaler(7)",  MuxPrescaler(7),  32),
+    REGINFO("FrontOutMap(0)",   FrontOutMap(0),   16),
+    REGINFO("FrontInMap(0)",    FrontInMap(0),    32),
+    REGINFO("FrontInMap(1)",    FrontInMap(1),    32),
+    REGINFO("UnivInMap(0)",     UnivInMap(0),     32),
+    REGINFO("UnivInMap(1)",     UnivInMap(1),     32),
+    REGINFO("RearInMap(12)",    RearInMap(12),    32),
+    REGINFO("RearInMap(13)",    RearInMap(13),    32),
+    REGINFO("RearInMap(14)",    RearInMap(14),    32),
+    REGINFO("RearInMap(15)",    RearInMap(15),    32),
+    REGINFO("DataBuffer(0)",    DataBuffer(0),     8),
+    REGINFO("DataBuffer(1)",    DataBuffer(1),     8),
+    REGINFO("DataBuffer(2)",    DataBuffer(2),     8),
+    REGINFO("DataBuffer(3)",    DataBuffer(3),     8),
+    REGINFO("DataBuffer(4)",    DataBuffer(4),     8),
+    REGINFO("DataBuffer(5)",    DataBuffer(5),     8),
+    REGINFO("SeqRamTS(0,0)",    SeqRamTS(0,0),    32),
+    REGINFO("SeqRamTS(0,1)",    SeqRamTS(0,1),    32),
+    REGINFO("SeqRamTS(0,2)",    SeqRamTS(0,2),    32),
+    REGINFO("SeqRamTS(0,3)",    SeqRamTS(0,3),    32),
+    REGINFO("SeqRamTS(0,4)",    SeqRamTS(0,4),    32),
+    REGINFO("SeqRamEvent(0,0)", SeqRamEvent(0,0), 32),
+    REGINFO("SeqRamEvent(0,1)", SeqRamEvent(0,1), 32),
+    REGINFO("SeqRamEvent(0,2)", SeqRamEvent(0,2), 32),
+    REGINFO("SeqRamEvent(0,3)", SeqRamEvent(0,3), 32),
+    REGINFO("SeqRamEvent(0,4)", SeqRamEvent(0,4), 32),
+    REGINFO("SeqRamTS(1,0)",    SeqRamTS(1,0),    32),
+    REGINFO("SeqRamTS(1,1)",    SeqRamTS(1,1),    32),
+    REGINFO("SeqRamTS(1,2)",    SeqRamTS(1,2),    32),
+    REGINFO("SeqRamTS(1,3)",    SeqRamTS(1,3),    32),
+    REGINFO("SeqRamTS(1,4)",    SeqRamTS(1,4),    32),
+    REGINFO("SeqRamEvent(1,0)", SeqRamEvent(1,0), 32),
+    REGINFO("SeqRamEvent(1,1)", SeqRamEvent(1,1), 32),
+    REGINFO("SeqRamEvent(1,2)", SeqRamEvent(1,2), 32),
+    REGINFO("SeqRamEvent(1,3)", SeqRamEvent(1,3), 32),
+    REGINFO("SeqRamEvent(1,4)", SeqRamEvent(1,4), 32),
 #undef REGINFO
 };
 
@@ -705,18 +626,18 @@ printregisters(volatile epicsUInt8 *evg) {
 
     for(reg=0; reg<NELEMENTS(printreg); reg++){
         switch(printreg[reg].rsize){
-            case 8:
-                printf("%16s: %02x\n", printreg[reg].label,
-                                       ioread8(evg+printreg[reg].offset));
-                break;
-            case 16:
-                printf("%16s: %04x\n", printreg[reg].label,
-                                       nat_ioread16(evg+printreg[reg].offset));
-                break;
-            case 32:
-                printf("%16s: %08x\n", printreg[reg].label,
-                                       nat_ioread32(evg+printreg[reg].offset));
-                break;
+        case 8:
+            printf("%16s: %02x\n", printreg[reg].label,
+                   ioread8(evg+printreg[reg].offset));
+            break;
+        case 16:
+            printf("%16s: %04x\n", printreg[reg].label,
+                   nat_ioread16(evg+printreg[reg].offset));
+            break;
+        case 32:
+            printf("%16s: %08x\n", printreg[reg].label,
+                   nat_ioread32(evg+printreg[reg].offset));
+            break;
         }
     }
 }
@@ -732,10 +653,10 @@ reportCard(mrf::Object* obj, void* arg) {
     printf("\tFPGA Version: %08x (firmware: %x)\n", evg->getFwVersion(), evg->getFwVersionID());
     printf("\tForm factor: %s\n", evg->getFormFactorStr().c_str());
 
-    bus_configuration *bus = evg->getBusConfiguration();
+    const bus_configuration *bus = evg->getBusConfiguration();
     if(bus->busType == busType_vme){
         struct VMECSRID vmeDev;
-		vmeDev.board = 0; vmeDev.revision = 0; vmeDev.vendor = 0;
+        vmeDev.board = 0; vmeDev.revision = 0; vmeDev.vendor = 0;
         volatile unsigned char* csrAddr = devCSRTestSlot(vmeEvgIDs, bus->vme.slot, &vmeDev);
         if(csrAddr){
             epicsUInt32 ader = CSRRead32(csrAddr + CSR_FN_ADER(1));
@@ -753,17 +674,13 @@ reportCard(mrf::Object* obj, void* arg) {
         }
     }
     else if(bus->busType == busType_pci){
-        const epicsPCIDevice *pciDev;
-        if(!devPCIFindBDF(mrmevgs, bus->pci.bus, bus->pci.device, bus->pci.function, &pciDev, 0)){
-            printf("\tPCI configured bus: 0x%08x\n", bus->pci.bus);
-            printf("\tPCI configured device: 0x%08x\n", bus->pci.device);
-            printf("\tPCI configured function: 0x%08x\n", bus->pci.function);
-            printf("\tPCI IRQ: %u\n", pciDev->irq);
-            if(*level>1) printf("\tPCI class: 0x%08x, revision: 0x%x, sub device: 0x%x, sub vendor: 0x%x\n", pciDev->id.pci_class, pciDev->id.revision, pciDev->id.sub_device, pciDev->id.sub_vendor);
+        const epicsPCIDevice *pciDev = bus->pci.dev;
+        printf("\tPCI configured bus: 0x%08x\n", pciDev->bus);
+        printf("\tPCI configured device: 0x%08x\n", pciDev->device);
+        printf("\tPCI configured function: 0x%08x\n", pciDev->function);
+        printf("\tPCI in slot: %s\n", pciDev->slot ? pciDev->slot : "<N/A>");
+        printf("\tPCI IRQ: %u\n", pciDev->irq);
 
-        }else{
-            printf("\tPCI Device not found\n");
-        }
     }else{
         printf("\tUnknown bus type\n");
     }
@@ -772,7 +689,7 @@ reportCard(mrf::Object* obj, void* arg) {
     
     if(*level >= 2)
         printregisters(evg->getRegAddr());
-        
+
     printf("\n");
     return true;
 }

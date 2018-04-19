@@ -87,7 +87,7 @@ record(ao, "$(P)Link:Clk-SP") {
   field(OUT , "@OBJ=$(OBJ), PROP=Clock")
   field(PINI, "YES")
   field(DESC, "Event Link speed")
-  field(VAL , "124.916")
+  field(VAL , "$(FEVT=124.916)")
   field(EGU , "MHz")
   field(LINR, "LINEAR")
   field(ESLO, "1e-6")
@@ -217,8 +217,8 @@ record(stringin, "$(P)HwType-I") {
   field(DESC, "Hardware type code")
 }
 
-record(longin, "$(P)FwVer-I") {
-  field(DTYP, "Obj Prop uint32")
+record(stringin, "$(P)FwVer-I") {
+  field(DTYP, "Obj Prop string")
   field(INP , "@OBJ=$(OBJ), PROP=Version")
   field(PINI, "YES")
   field(DESC, "Firmware version")
@@ -330,9 +330,9 @@ record(longin, "$(P)Time:Div-I") {
 
 record(stringin, "$(P)Time-I") {
   field(DTYP, "EVR Timestamp")
-  field(INP , "@OBJ=$(OBJ)")
+  field(INP , "@OBJ=$(OBJ), Code=$(EVNT1HZ=125)")
   field(SCAN, "Event")
-  field(EVNT, "$(EVNT1HZ)")
+  field(EVNT, "$(EVNT1HZ=125)")
   field(TSE , "-2")
 }
 

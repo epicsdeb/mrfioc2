@@ -41,15 +41,43 @@ record(bo, "$(P)ResetMxc-Cmd") {
     field( UDF, "0")
 }
 
-record(stringin, "$(P)Timestamp-RB") {
-    field( DTYP, "EVG TIMESTAMP")
-    field( DESC, "EVG TimeStamp")
-    field( INP , "#C0 S0 @$(EVG)")
+record(longout, "$(P)SendEvt-SP") {
+    field( DESC, "EVG Software Event Code")
+    field( DTYP, "Obj Prop uint32")
+    field( OUT,  "@OBJ=$(OBJ), PROP=EvtCode")
+    field( UDF,  "0")
+    field( PINI, "YES") # so users don't complain about INVALID/UDF.  Safe as long as VAL=0. aka never autosave!
+    field( VAL,  "0")
+    field( HIHI, "256")
+    field( LOLO, "-1")
+    field( HHSV, "MAJOR")
+    field( LLSV, "MAJOR")
+    alias("$(SOFTEVT)EvtCode-SP")
+}
+
+record (stringin, "$(P)Timestamp-RB") {
+    field( DTYP, "Obj Prop string")
+    field( INP , "@OBJ=$(OBJ), PROP=NextSecond")
     field( SCAN, "I/O Intr")
+    field( FLNK, "$(P)TimeErr-I")
+}
+
+record(bo, "$(P)SimTimestamp-Sel") {
+    field( DTYP, "Obj Prop bool")
+    field( OUT , "@OBJ=$(OBJ), PROP=SimTime")
+    field( OMSL, "closed_loop")
+    field( DOL , "$(P)1ppsInp-MbbiDir_.BF CP")
+    field( ZNAM, "Normal")
+    field( ONAM, "Simulate")
+}
+
+record(ai, "$(P)TimeErr-I") {
+    field( DTYP, "Obj Prop double")
+    field( INP , "@OBJ=$(OBJ), PROP=Time Error")
 }
 
 record(bo,"$(P)SyncTimestamp-Cmd" ) {
-    field( DTYP, "Obj Prop bool")
+    field( DTYP, "Obj Prop command")
     field( OUT , "@OBJ=$(OBJ), PROP=Sync TS")
     field( DESC, "EVG Sync TimeStamp")
 }
@@ -66,14 +94,15 @@ record(mbbo, "$(P)1ppsInp-Sel") {
     field( FRST, "Univ1")
     field( FVST, "Univ2")
     field( SXST, "Univ3")
-    field( ZRVL, 0)
-    field( ONVL, 1)
-    field( TWVL, 2)
-    field( THVL, 4)
-    field( FRVL, 8)
-    field( FVVL, 16)
-    field( SXVL, 32)
-    field( SVSV, "INVALID")
+    field( SVST, "Sys Clk")
+    field( ZRVL, "0")
+    field( ONVL, "1")
+    field( TWVL, "2")
+    field( THVL, "4")
+    field( FRVL, "8")
+    field( FVVL, "16")
+    field( SXVL, "32")
+    field( SVVL, "0x8000")
     field( EISV, "INVALID")
     field( NISV, "INVALID")
     field( TESV, "INVALID")
@@ -84,6 +113,7 @@ record(mbbo, "$(P)1ppsInp-Sel") {
     field( FFSV, "INVALID")
     field( UNSV, "INVALID")
     field( IVOA, "Don't drive outputs")
+    field( FLNK, "$(P)1ppsInp-MbbiDir_")
     info( autosaveFields_pass0, "VAL")
 }
 
@@ -93,7 +123,7 @@ record(mbbo, "$(P)1ppsInp-Sel") {
 #
 record(mbbiDirect, "$(P)1ppsInp-MbbiDir_") {
     field( DESC, "EVG 1PPS Input")
-    field( INP,  "$(P)1ppsInp-Sel.RVAL CP")
+    field( INP,  "$(P)1ppsInp-Sel.RVAL NPP")
 }
 
 record(longin, "$(P)DbusStatus-RB" ) {

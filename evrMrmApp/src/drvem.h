@@ -6,13 +6,14 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef EVRMRML_H_INC
 #define EVRMRML_H_INC
 
 #include "evr/evr.h"
+#include "mrf/spi.h"
 
 #include <string>
 #include <vector>
@@ -35,28 +36,13 @@
 #include "drvemCML.h"
 #include "delayModule.h"
 #include "drvemRxBuf.h"
+#include "mrmevrseq.h"
 
 #include "mrmGpio.h"
-
+#include "mrmtimesrc.h"
 #include "mrmDataBufTx.h"
 #include "sfp.h"
 #include "configurationInfo.h"
-
-//! @brief Helper to allow one class to have several runable methods
-template<class C,void (C::*Method)()>
-class epicsShareClass epicsThreadRunableMethod : public epicsThreadRunable
-{
-    C& owner;
-public:
-    epicsThreadRunableMethod(C& o)
-        :owner(o)
-    {}
-    virtual ~epicsThreadRunableMethod(){}
-    virtual void run()
-    {
-        (owner.*Method)();
-    }
-};
 
 class EVRMRM;
 
@@ -93,9 +79,12 @@ struct epicsShareClass eventCode {
  *
  * 
  */
-class epicsShareClass EVRMRM : public EVR
+class epicsShareClass EVRMRM : public mrf::ObjectInst<EVRMRM, EVR>,
+                                      mrf::SPIInterface,
+                               public TimeStampSource
 {
-public:    
+    typedef mrf::ObjectInst<EVRMRM, EVR> base_t;
+public:
     /** @brief Guards access to instance
    *  All callers must take this lock before any operations on
    *  this object.
@@ -106,8 +95,8 @@ public:
         const char *model;
         size_t nPul; // number of pulsers
         size_t nPS;   // number of prescalers
-        // # of outputs (Front panel, FP Universal, Rear transition module)
-        size_t nOFP, nOFPUV, nORB;
+        // # of outputs (Front panel, FP Universal, Rear transition module, Backplane)
+        size_t nOFP, nOFPUV, nORB, nOBack;
         size_t nOFPDly;  // # of slots== # of delay modules. Some of the FP Universals have GPIOs. Each FPUV==2 GPIO pins, 2 FPUVs in one slot = 4 GPIO pins. One dly module uses 4 GPIO pins.
         // # of CML outputs
         size_t nCML;
@@ -125,95 +114,99 @@ private:
     void cleanup();
 public:
 
-    virtual void lock() const{evrLock.lock();};
-    virtual void unlock() const{evrLock.unlock();};
+    // SPI access
+    virtual void select(unsigned id);
+    virtual epicsUInt8 cycle(epicsUInt8 in);
 
-    virtual std::string model() const;
+    virtual void lock() const OVERRIDE FINAL {evrLock.lock();}
+    virtual void unlock() const OVERRIDE FINAL {evrLock.unlock();};
+
+    virtual std::string model() const OVERRIDE FINAL;
     epicsUInt32 fpgaFirmware();
     formFactor getFormFactor();
     std::string formFactorStr();
-    virtual epicsUInt32 version() const;
+    virtual MRFVersion version() const OVERRIDE FINAL;
 
 
-    virtual bool enabled() const;
-    virtual void enable(bool v);
+    virtual bool enabled() const OVERRIDE FINAL;
+    virtual void enable(bool v) OVERRIDE FINAL;
 
-    virtual MRMPulser* pulser(epicsUInt32);
-    virtual const MRMPulser* pulser(epicsUInt32) const;
-
-    virtual MRMOutput* output(OutputType,epicsUInt32 o);
-    virtual const MRMOutput* output(OutputType,epicsUInt32 o) const;
-
-    virtual bool mappedOutputState() const;
-
-    virtual DelayModule* delay(epicsUInt32 i);
-
-    virtual MRMInput* input(epicsUInt32 idx);
-    virtual const MRMInput* input(epicsUInt32) const;
-
-    virtual MRMPreScaler* prescaler(epicsUInt32);
-    virtual const MRMPreScaler* prescaler(epicsUInt32) const;
-
-    virtual MRMCML* cml(epicsUInt32 idx);
-    virtual const MRMCML* cml(epicsUInt32) const;
+    virtual bool mappedOutputState() const OVERRIDE FINAL;
 
     MRMGpio* gpio();
 
-    virtual bool specialMapped(epicsUInt32 code, epicsUInt32 func) const;
-    virtual void specialSetMap(epicsUInt32 code, epicsUInt32 func,bool);
+    virtual bool specialMapped(epicsUInt32 code, epicsUInt32 func) const OVERRIDE FINAL;
+    virtual void specialSetMap(epicsUInt32 code, epicsUInt32 func,bool) OVERRIDE FINAL;
 
-    virtual double clock() const
+    virtual double clock() const OVERRIDE FINAL
         {SCOPED_LOCK(evrLock);return eventClock;}
-    virtual void clockSet(double);
+    virtual void clockSet(double) OVERRIDE FINAL;
 
-    virtual bool pllLocked() const;
+    virtual bool pllLocked() const OVERRIDE FINAL;
 
-    virtual epicsUInt32 irqCount() const{return count_hardware_irq;}
+    virtual epicsUInt32 irqCount() const OVERRIDE FINAL {return count_hardware_irq;}
 
-    virtual bool linkStatus() const;
-    virtual IOSCANPVT linkChanged() const{return IRQrxError;}
-    virtual epicsUInt32 recvErrorCount() const{return count_recv_error;}
+    virtual bool linkStatus() const OVERRIDE FINAL;
+    virtual IOSCANPVT linkChanged() const OVERRIDE FINAL{return IRQrxError;}
+    virtual epicsUInt32 recvErrorCount() const OVERRIDE FINAL{return count_recv_error;}
 
-    virtual epicsUInt32 uSecDiv() const;
+    virtual epicsUInt32 uSecDiv() const OVERRIDE FINAL;
 
     //! Using external hardware input for inhibit?
-    virtual bool extInhib() const;
-    virtual void setExtInhib(bool);
+    virtual bool extInhib() const OVERRIDE FINAL;
+    virtual void setExtInhib(bool) OVERRIDE FINAL;
 
-    virtual epicsUInt32 tsDiv() const
+    virtual epicsUInt32 tsDiv() const OVERRIDE FINAL
         {SCOPED_LOCK(evrLock);return shadowCounterPS;}
 
-    virtual void setSourceTS(TSSource);
-    virtual TSSource SourceTS() const
+    virtual void setSourceTS(TSSource) OVERRIDE FINAL;
+    virtual TSSource SourceTS() const OVERRIDE FINAL
         {SCOPED_LOCK(evrLock);return shadowSourceTS;}
-    virtual double clockTS() const;
-    virtual void clockTSSet(double);
-    virtual bool interestedInEvent(epicsUInt32 event,bool set);
+    virtual double clockTS() const OVERRIDE FINAL;
+    virtual void clockTSSet(double) OVERRIDE FINAL;
+    virtual bool interestedInEvent(epicsUInt32 event,bool set) OVERRIDE FINAL;
 
-    virtual bool TimeStampValid() const;
-    virtual IOSCANPVT TimeStampValidEvent() const{return timestampValidChange;}
+    virtual bool TimeStampValid() const OVERRIDE FINAL;
+    virtual IOSCANPVT TimeStampValidEvent() const OVERRIDE FINAL {return timestampValidChange;}
 
-    virtual bool getTimeStamp(epicsTimeStamp *ts,epicsUInt32 event);
-    virtual bool getTicks(epicsUInt32 *tks);
-    virtual IOSCANPVT eventOccurred(epicsUInt32 event) const;
-    virtual void eventNotifyAdd(epicsUInt32, eventCallback, void*);
-    virtual void eventNotifyDel(epicsUInt32, eventCallback, void*);
+    virtual bool getTimeStamp(epicsTimeStamp *ts,epicsUInt32 event) OVERRIDE FINAL;
+    virtual bool getTicks(epicsUInt32 *tks) OVERRIDE FINAL;
+    virtual IOSCANPVT eventOccurred(epicsUInt32 event) const OVERRIDE FINAL;
+    virtual void eventNotifyAdd(epicsUInt32, eventCallback, void*) OVERRIDE FINAL;
+    virtual void eventNotifyDel(epicsUInt32, eventCallback, void*) OVERRIDE FINAL;
 
     bool convertTS(epicsTimeStamp* ts);
 
-    virtual epicsUInt16 dbus() const;
+    virtual epicsUInt16 dbus() const OVERRIDE FINAL;
 
-    virtual epicsUInt32 heartbeatTIMOCount() const{return count_heartbeat;}
-    virtual IOSCANPVT heartbeatTIMOOccured() const{return IRQheartbeat;}
+    virtual epicsUInt32 heartbeatTIMOCount() const OVERRIDE FINAL {return count_heartbeat;}
+    virtual IOSCANPVT heartbeatTIMOOccured() const OVERRIDE FINAL {return IRQheartbeat;}
 
-    virtual epicsUInt32 FIFOFullCount() const
+    virtual epicsUInt32 FIFOFullCount() const OVERRIDE FINAL
     {SCOPED_LOCK(evrLock);return count_FIFO_overflow;}
-    virtual epicsUInt32 FIFOOverRate() const
+    virtual epicsUInt32 FIFOOverRate() const OVERRIDE FINAL
     {SCOPED_LOCK(evrLock);return count_FIFO_sw_overrate;}
-    virtual epicsUInt32 FIFOEvtCount() const{return count_fifo_events;}
-    virtual epicsUInt32 FIFOLoopCount() const{return count_fifo_loops;}
+    virtual epicsUInt32 FIFOEvtCount() const OVERRIDE FINAL {return count_fifo_events;}
+    virtual epicsUInt32 FIFOLoopCount() const OVERRIDE FINAL {return count_fifo_loops;}
 
     void enableIRQ(void);
+
+    bool dcEnabled() const;
+    void dcEnable(bool v);
+    double dcTarget() const;
+    void dcTargetSet(double);
+    //! Measured delay
+    double dcRx() const;
+    //! Delay compensation applied
+    double dcInternal() const;
+    epicsUInt32 dcStatusRaw() const;
+    epicsUInt32 topId() const;
+
+    epicsUInt32 dummy() const { return 0; }
+    void setEvtCode(epicsUInt32 code) OVERRIDE FINAL;
+
+    epicsUInt32 timeSrc() const;
+    void setTimeSrc(epicsUInt32 mode);
 
     static void isr(EVRMRM *evr, bool pci);
     static void isr_pci(void*);
@@ -227,7 +220,7 @@ public:
     epicsUInt32 baselen;
     mrmDataBufTx buftx;
     mrmBufRx bufrx;
-    std::auto_ptr<SFP> sfp;
+    mrf::auto_ptr<SFP> sfp;
 private:
 
     // Set by ISR
@@ -272,6 +265,8 @@ private:
 
     MRMGpio gpio_;
 
+    mrf::auto_ptr<EvrSeqManager> seq;
+
     // run when FIFO not-full IRQ is received
     void drain_fifo();
     epicsThreadRunableMethod<EVRMRM, &EVRMRM::drain_fifo> drain_fifo_method;
@@ -286,13 +281,20 @@ private:
     // Buffer received
     CALLBACK data_rx_cb;
 
-    // Called when the Event Log is stopped
-    CALLBACK drain_log_cb;
-    static void drain_log(CALLBACK*);
-
     // Periodic callback to detect when link state goes from down to up
     CALLBACK poll_link_cb;
     static void poll_link(CALLBACK*);
+
+    enum timeSrcMode_t {
+        Disable,  // do nothing
+        External, // shift out TS on upstream when reset (125) received on downstream
+        SysClk,   // generate reset (125) from software timer, shift out TS on upstream
+    } timeSrcMode;
+    /* in practice
+     *   timeSrcMode!=Disable -> listen for 125, react by sending shift 0/1 codes
+     *   timeSrcMode==SysClk  -> send soft 125 events
+     */
+    CALLBACK timeSrc_cb;
 
     // Set by clockTSSet() with IRQ disabled
     double stampClock;

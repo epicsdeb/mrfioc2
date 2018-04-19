@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef EVRMRMIOCSH_H
@@ -34,7 +34,7 @@ epicsShareExtern int evrmrmVerb;
 
 
 void epicsShareFunc
-mrmEvrSetupPCI(const char* id,const char* pciid,int d,int f);
+mrmEvrSetupPCI(const char* id, const char* pcispec);
 void epicsShareFunc
 mrmEvrSetupVME(const char* id,int slot,int base,int level, int vector);
 

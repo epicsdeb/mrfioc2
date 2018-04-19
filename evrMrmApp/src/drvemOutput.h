@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef EVRMRMOUTPUT_H_INC
@@ -23,8 +23,9 @@ class EVRMRM;
  * This class is reused by other subunits which
  * have identical mapping registers.
  */
-class MRMOutput : public Output
+class MRMOutput : public mrf::ObjectInst<MRMOutput, Output>
 {
+    typedef mrf::ObjectInst<MRMOutput, Output> base_t;
 public:
   MRMOutput(const std::string& n, EVRMRM* owner, OutputType t, unsigned int idx);
   virtual ~MRMOutput();
@@ -35,10 +36,11 @@ public:
   virtual epicsUInt32 source() const;
   virtual void setSource(epicsUInt32);
 
+  epicsUInt32 source2() const;
+  void setSource2(epicsUInt32);
+
   virtual bool enabled() const;
   virtual void enable(bool);
-
-  virtual const char*sourceName(epicsUInt32) const;
 
 private:
   EVRMRM * const owner;
@@ -47,8 +49,8 @@ private:
   bool isEnabled;
   epicsUInt32 shadowSource;
 
-  virtual epicsUInt32 sourceInternal() const;
-  virtual void setSourceInternal(epicsUInt32);
+  epicsUInt32 sourceInternal() const;
+  void setSourceInternal();
 };
 
 

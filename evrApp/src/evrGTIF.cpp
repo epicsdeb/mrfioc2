@@ -6,7 +6,7 @@
 \*************************************************************************/
 /* EVR GeneralTime InterFace
  *
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <epicsTypes.h>
@@ -69,7 +69,6 @@ bool visitTime(mrf::Object* obj, void* raw)
 }
 
 extern "C"
-epicsShareFunc
 int EVREventTime(epicsTimeStamp *pDest, int event)
 {
 try {
@@ -93,7 +92,6 @@ try {
 }
 
 extern "C"
-epicsShareFunc
 int EVRCurrentTime(epicsTimeStamp *pDest)
 {
     return EVREventTime(pDest, epicsTimeEventCurrentTime);
@@ -101,7 +99,7 @@ int EVRCurrentTime(epicsTimeStamp *pDest)
 
 int mrmGTIFEnable = 1;
 
-#if EPICS_VERSION==3 && ( EPICS_REVISION>14 || (EPICS_REVISION==14 && EPICS_MODIFICATION>=9) )
+#if EPICS_VERSION_INT >= VERSION_INT(3,14,9,0)
 
 #include <generalTimeSup.h>
 

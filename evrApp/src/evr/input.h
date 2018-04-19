@@ -5,13 +5,12 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef INPUT_HPP_INC
 #define INPUT_HPP_INC
 
-#include "evr/util.h"
 #include "mrf/object.h"
 
 #include <epicsTypes.h>
@@ -22,10 +21,10 @@ enum TrigMode {
   TrigEdge=2
 };
 
-class epicsShareClass Input : public mrf::ObjectInst<Input>, public IOStatus
+class epicsShareClass Input : public mrf::ObjectInst<Input>
 {
 public:
-  Input(const std::string& n) : mrf::ObjectInst<Input>(n) {}
+  explicit Input(const std::string& n) : mrf::ObjectInst<Input>(n) {}
   virtual ~Input()=0;
 
   //! Set mask of dbus bits are driven by this input

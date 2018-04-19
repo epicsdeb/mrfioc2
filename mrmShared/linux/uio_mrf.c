@@ -16,7 +16,7 @@
 
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(DRV_VERSION);
-MODULE_AUTHOR("Michael Davidsaver <mdavidsaver@bnl.gov>");
+MODULE_AUTHOR("Michael Davidsaver <mdavidsaver@gmail.com>");
 
 /* something that userspace can test to see if we
  * are the kernel module its looking for.
@@ -32,6 +32,11 @@ static int modparam_iversion = 2;
 module_param_named(interfaceversion, modparam_iversion, int, 0444);
 MODULE_PARM_DESC(interfaceversion, "User space interface version");
 
+/* Use MSI if present. */
+static unsigned modparam_usemsi = 1;
+module_param_named(use_msi, modparam_usemsi, uint, 0444);
+MODULE_PARM_DESC(use_msi, "Use MSI if present (default 1, yes)");
+
 /************************ PCI Device and vendor IDs ****************/
 
 #define PCI_VENDOR_ID_MRF                   0x1a3e
@@ -41,6 +46,8 @@ MODULE_PARM_DESC(interfaceversion, "User space interface version");
 
 #define PCI_DEVICE_ID_EC_30                 0xEC30
 
+#define PCI_DEVICE_ID_XILINX_DEV            0x7011
+
 #define PCI_DEVICE_ID_PLX_9030              0x9030      /** PCI Device ID for PLX-9030 bridge chip */
 #define PCI_DEVICE_ID_PLX_9056              0x9056      /** PCI Device ID for PLX-9056 bridge chip */
 
@@ -48,17 +55,22 @@ MODULE_PARM_DESC(interfaceversion, "User space interface version");
 #define PCI_SUBDEVICE_ID_MRF_PMCEVR_230     0x11e6
 /* cPCI-EVR-230 */
 #define PCI_SUBDEVICE_ID_MRF_PXIEVR_230     0x10e6
+/* cPCI-EVG-220 */
+#define PCI_SUBDEVICE_ID_MRF_PXIEVG_220     0x20dc
 /* cPCI-EVG-230 */
 #define PCI_SUBDEVICE_ID_MRF_PXIEVG_230     0x20E6
 /* cPCI-EVRTG-300 */
 #define PCI_SUBDEVICE_ID_MRF_EVRTG_300      0x192c
-/* PCIe-EVR-300 */
+/* PCIe-EVR-300 and PCIe-EVR-300DC */
 #define PCI_SUBDEVICE_ID_PCIE_EVR_300       0x172c
 
 /* cPCI-EVG-300 */
 #define PCI_DEVICE_ID_MRF_CPCI_EVG_300      0x252c
 /* cPCI-EVR-300 */
 #define PCI_DEVICE_ID_MRF_CPCI_EVR_300      0x152c
+/* mTCA-EVR-300 */
+#define PCI_DEVICE_ID_MRF_EVRMTCA300  0x132c
+
 
 /************************ Compatability ****************************/
 
@@ -287,10 +299,10 @@ mrf_handler_plx(int irq, struct uio_info *info)
         flags |= IRQ_Enable_ALL;
 
         if((flags & val)==0) {
-            dev_info(&dev->dev, "reject %08x %08x\n", (unsigned)flags, (unsigned)val);
+            dev_dbg(&dev->dev, "reject %08x %08x\n", (unsigned)flags, (unsigned)val);
             return IRQ_NONE; /* not our interrupt */
         } else
-            dev_info(&dev->dev, "accept %08x %08x\n", (unsigned)flags, (unsigned)val);
+            dev_dbg(&dev->dev, "accept %08x %08x\n", (unsigned)flags, (unsigned)val);
 
         if(!priv->usemie) {
             // Disable interrupts on FPGA
@@ -470,6 +482,7 @@ mrf_probe(struct pci_dev *dev,
         }
 
         if (pci_request_regions(dev, DRV_NAME)) {
+                ret=-ENODEV;
                 goto err_disable;
         }
 
@@ -510,11 +523,13 @@ mrf_probe(struct pci_dev *dev,
             switch(dev->vendor) {
             case PCI_VENDOR_ID_LATTICE:
             case PCI_VENDOR_ID_MRF:
+            case PCI_VENDOR_ID_XILINX:
                 dev_info(&dev->dev, "Attaching MRF device w/o PLX bridge (%08x)\n",
                          (unsigned)dev->device);
                 break;
             default:
                 dev_err(&dev->dev, "Unsupported vendor ID\n");
+                ret=-ENODEV;
                 goto err_release;
             }
 
@@ -558,6 +573,9 @@ mrf_probe(struct pci_dev *dev,
                 ret=-ENODEV;
                 goto err_unmap;
             }
+            if((mrfver&0xff00)==0x0200)
+                priv->usemie = 1;
+
             if(!priv->usemie) {
                 dev_warn(&dev->dev, "Consider update to firmware >=8 (currently %u) to avoid "
                          "race condition in IRQ handling\n", (mrfver&0xff));
@@ -567,6 +585,18 @@ mrf_probe(struct pci_dev *dev,
             /* 300 series only supported in "PLX" irq mode */
             priv->irqmode = 1;
             break;
+        }
+
+        if(modparam_usemsi) {
+            int err = pci_enable_msi(dev);
+            if(!err) {
+                dev_info(&dev->dev, "Using MSI\n");
+                priv->msienabled = 1;
+                /* needed for MSI */
+                pci_set_master(dev);
+            } else {
+                dev_dbg(&dev->dev, "Error enabling MSI %d\n", err);
+            }
         }
 
         info->irq = dev->irq;
@@ -647,6 +677,9 @@ mrf_probe(struct pci_dev *dev,
 err_unmap:
         iounmap(info->mem[0].internal_addr);
         iounmap(info->mem[2].internal_addr);
+        if(priv->msienabled) {
+            pci_disable_msi(dev);
+        }
 err_release:
         pci_release_regions(dev);
 err_disable:
@@ -667,6 +700,12 @@ static struct pci_device_id mrf_pci_ids[] = {
         .vendor =       PCI_VENDOR_ID_PLX,
         .device =       PCI_DEVICE_ID_PLX_9030,
         .subvendor =    PCI_SUBVENDOR_ID_MRF,
+        .subdevice =    PCI_SUBDEVICE_ID_MRF_PXIEVG_220,
+    },
+    {
+        .vendor =       PCI_VENDOR_ID_PLX,
+        .device =       PCI_DEVICE_ID_PLX_9030,
+        .subvendor =    PCI_SUBVENDOR_ID_MRF,
         .subdevice =    PCI_SUBDEVICE_ID_MRF_PXIEVG_230,
     },
     {
@@ -682,8 +721,17 @@ static struct pci_device_id mrf_pci_ids[] = {
         .subdevice =    PCI_SUBDEVICE_ID_MRF_EVRTG_300,
     },
     {
+        /* original PCIe-EVR-300 */
         .vendor =       PCI_VENDOR_ID_LATTICE,
         .device =       PCI_DEVICE_ID_EC_30,
+        .subvendor =    PCI_SUBVENDOR_ID_MRF,
+        .subdevice =    PCI_SUBDEVICE_ID_PCIE_EVR_300,
+        .driver_data =  0x17, /* MSB of the Version register */
+    },
+    {
+        /* PCIe-EVR-300DC */
+        .vendor =       PCI_VENDOR_ID_XILINX,
+        .device =       PCI_DEVICE_ID_XILINX_DEV,
         .subvendor =    PCI_SUBVENDOR_ID_MRF,
         .subdevice =    PCI_SUBDEVICE_ID_PCIE_EVR_300,
         .driver_data =  0x17, /* MSB of the Version register */
@@ -702,8 +750,16 @@ static struct pci_device_id mrf_pci_ids[] = {
         .subdevice =    PCI_DEVICE_ID_MRF_CPCI_EVR_300,
         .driver_data =  0x14,
     },
+    {
+        .vendor =       PCI_VENDOR_ID_XILINX,
+        .device =       PCI_DEVICE_ID_XILINX_DEV,
+        .subvendor =    PCI_SUBVENDOR_ID_MRF,
+        .subdevice =    PCI_DEVICE_ID_MRF_EVRMTCA300,
+        .driver_data =  0x18,
+    },
     { 0, }
 };
+MODULE_DEVICE_TABLE(pci, mrf_pci_ids);
 
 /************************** Module boilerplate ****************************/
 
@@ -722,7 +778,7 @@ mrf_remove(struct pci_dev *dev)
 #endif
 #if defined(CONFIG_GENERIC_GPIO) || defined(CONFIG_PARPORT_NOT_PC)
         {
-            if(dev->subsystem_device != PCI_SUBDEVICE_ID_PCIE_EVR_300) {
+            if(dev->device==PCI_DEVICE_ID_PLX_9030) {
                 void __iomem *plx = info->mem[0].internal_addr;
                 u32 val = ioread32(plx + GPIOC);
                 // Disable output drivers for TCLK, TMS, and TDI
@@ -743,6 +799,9 @@ mrf_remove(struct pci_dev *dev)
             iounmap(info->mem[2].internal_addr);
         }
 
+        if(priv->msienabled) {
+            pci_disable_msi(dev);
+        }
         pci_release_regions(dev);
         pci_disable_device(dev);
 

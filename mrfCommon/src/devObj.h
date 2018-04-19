@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 #ifndef DEVOBJ_H
 #define DEVOBJ_H
@@ -27,6 +27,15 @@
 
 #include <stdexcept>
 #include <string>
+
+#define CATCH(RET) catch(alarm_exception& e) {\
+    (void)recGblSetSevr(prec, e.status(), e.severity());\
+    return (RET);\
+    } catch(std::exception& e) {\
+    (void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM);\
+    epicsPrintf("%s: error: %s\n", prec->name, e.what());\
+    return (RET);\
+    }
 
 /* Device support related casting functions */
 
@@ -75,26 +84,22 @@ struct common_dset{
 struct addrBase {
     char obj[30];
     char prop[30];
+    char klass[30];
+    char parent[30];
     int rbv;
     mrf::Object *O;
 };
 
-static const
-linkOptionEnumType readbackEnum[] = { {"No",0}, {"Yes",1} };
+epicsShareExtern const
+linkOptionEnumType readbackEnum[];
 
 template<typename T>
 struct addr : public addrBase {
-    std::auto_ptr<mrf::property<T> > P;
+    mrf::auto_ptr<mrf::property<T> > P;
 };
 
-static const
-linkOptionDef objdef[] =
-{
-    linkString  (addrBase, obj , "OBJ"  , 1, 0),
-    linkString  (addrBase, prop , "PROP"  , 1, 0),
-    linkEnum    (addrBase, rbv, "RB"   , 0, 0, readbackEnum),
-    linkOptionEnd
-};
+epicsShareExtern const
+linkOptionDef objdef[];
 
 template<dsxt* D>
 static inline
@@ -132,7 +137,7 @@ try {
     if(lnk->type!=INST_IO)
         return S_db_errArg;
 
-    std::auto_ptr<addr<P> > a;
+    mrf::auto_ptr<addr<P> > a;
     if(prec->dpvt) {
         a.reset((addr<P>*)prec->dpvt);
         prec->dpvt=0;
@@ -140,6 +145,7 @@ try {
         a.reset(new addr<P>);
 
     a->rbv=0;
+    a->obj[0] = a->prop[0] = a->klass[0] = a->parent[0] = '\0';
 
     if(linkOptionsStore(objdef, (void*)(addrBase*)a.get(),
                         lnk->value.instio.string, 0)) {
@@ -147,20 +153,25 @@ try {
         return S_db_errArg;
     }
 
-    Object *o = Object::getObject(a->obj);
-    if(!o) {
-        errlogPrintf("%s: failed to find object '%s'\n", prec->name, a->obj);
+    Object *o;
+    try {
+        Object::create_args_t args;
+        args["PARENT"] = a->parent;
+        o = Object::getCreateObject(a->obj, a->klass, args);
+
+    } catch(std::exception& e) {
+        errlogPrintf("%s: failed to find/create object '%s' : %s\n", prec->name, a->obj, e.what());
         return S_db_errArg;
     }
 
-    std::auto_ptr<property<P> > prop = o->getProperty<P>(a->prop);
+    mrf::auto_ptr<property<P> > prop = o->getProperty<P>(a->prop);
     if(!prop.get()) {
         errlogPrintf("%s: '%s' lacks property '%s' of required type\n", prec->name, o->name().c_str(), a->prop);
         return S_db_errArg;
     }
 
     a->O = o;
-    a->P = prop;
+    a->P = PTRMOVE(prop);
 
     prec->dpvt = (void*)a.release();
 
@@ -214,11 +225,11 @@ long del_record_property(dbCommon* prec)
 static inline long get_ioint_info_property(int, dbCommon* prec, IOSCANPVT* io)
 {
     using namespace mrf;
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addrBase *prop=static_cast<addrBase*>(prec->dpvt);
 
-    std::auto_ptr<property<IOSCANPVT> > up = prop->O->getProperty<IOSCANPVT>(prop->prop);
+    mrf::auto_ptr<property<IOSCANPVT> > up = prop->O->getProperty<IOSCANPVT>(prop->prop);
 
     if(up.get())
         *io = up->get();

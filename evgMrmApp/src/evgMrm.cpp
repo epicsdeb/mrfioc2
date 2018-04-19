@@ -38,22 +38,17 @@
 
 evgMrm::evgMrm(const std::string& id, bus_configuration& busConfig, volatile epicsUInt8* const pReg, const epicsPCIDevice *pciDevice):
     mrf::ObjectInst<evgMrm>(id),
-    irqStop0_queued(0),
-    irqStop1_queued(0),
-    irqStart0_queued(0),
-    irqStart1_queued(0),
+    TimeStampSource(1.0),
     irqExtInp_queued(0),
-    m_syncTimestamp(false),
     m_buftx(id+":BUFTX",pReg+U32_DataBufferControl, pReg+U8_DataBuffer_base),
     m_pciDevice(pciDevice),
     m_id(id),
     m_pReg(pReg),
     busConfiguration(busConfig),
+    m_seq(this, pReg),
     m_acTrig(id+":AcTrig", pReg),
     m_evtClk(id+":EvtClk", pReg),
-    m_softEvt(id+":SoftEvt", pReg),
-    m_seqRamMgr(this),
-    m_softSeqMgr(this)
+  shadowIrqEnable(READ32(m_pReg, IrqEnable))
 {
     epicsUInt32 v, isevr;
 
@@ -117,17 +112,6 @@ evgMrm::evgMrm(const std::string& id, bus_configuration& busConfig, volatile epi
                 new evgOutput(name.str(), i, UnivOut, pReg + U16_UnivOutMap(i));
     }
 
-    m_timerEvent = new epicsEvent();
-    m_wdTimer = new wdTimer("Watch Dog Timer", this);
-
-    init_cb(&irqStart0_cb, priorityHigh, &evgMrm::process_sos0_cb,
-            m_seqRamMgr.getSeqRam(0));
-    init_cb(&irqStart1_cb, priorityHigh, &evgMrm::process_sos1_cb,
-            m_seqRamMgr.getSeqRam(1));
-    init_cb(&irqStop0_cb, priorityHigh, &evgMrm::process_eos0_cb,
-            m_seqRamMgr.getSeqRam(0));
-    init_cb(&irqStop1_cb, priorityHigh, &evgMrm::process_eos1_cb,
-            m_seqRamMgr.getSeqRam(1));
     init_cb(&irqExtInp_cb, priorityHigh, &evgMrm::process_inp_cb, this);
     
     scanIoInit(&ioScanTimestamp);
@@ -157,6 +141,19 @@ evgMrm::~evgMrm() {
 
     for(int i = 0; i < evgNumUnivOut; i++)
         delete m_output[std::pair<epicsUInt32, evgOutputType>(i, UnivOut)];
+}
+
+void evgMrm::enableIRQ()
+{
+    shadowIrqEnable |= EVG_IRQ_PCIIE          | //PCIe interrupt enable,
+                       EVG_IRQ_ENABLE         |
+                       EVG_IRQ_EXT_INP        |
+                       EVG_IRQ_STOP_RAM(0)    |
+                       EVG_IRQ_STOP_RAM(1)    |
+                       EVG_IRQ_START_RAM(0)   |
+                       EVG_IRQ_START_RAM(1);
+
+    WRITE32(m_pReg, IrqEnable, shadowIrqEnable);
 }
 
 void 
@@ -254,6 +251,7 @@ evgMrm::getDbusStatus() const {
 
 void
 evgMrm::enable(bool ena) {
+    SCOPED_LOCK(m_lock);
     if(ena)
         BITSET32(m_pReg, Control, EVG_MASTER_ENA);
     else
@@ -271,13 +269,15 @@ evgMrm::enabled() const {
 
 void
 evgMrm::resetMxc(bool reset) {
-    if(reset)
+    if(reset) {
+        SCOPED_LOCK(m_lock);
         BITSET32(m_pReg, Control, EVG_MXC_RESET);
+    }
 }
 
 void
 evgMrm::isr_pci(void* arg) {
-    evgMrm *evg = (evgMrm*)(arg);
+    evgMrm *evg = static_cast<evgMrm*>(arg);
 
     // Call to the generic implementation
     evg->isr(evg, true);
@@ -296,7 +296,7 @@ evgMrm::isr_pci(void* arg) {
 
 void
 evgMrm::isr_vme(void* arg) {
-    evgMrm *evg = (evgMrm*)(arg);
+    evgMrm *evg = static_cast<evgMrm*>(arg);
 
     // Call to the generic implementation
     evg->isr(evg, false);
@@ -304,16 +304,15 @@ evgMrm::isr_vme(void* arg) {
 
 void
 evgMrm::isr(evgMrm *evg, bool pci) {
-
+try{
     epicsUInt32 flags = READ32(evg->m_pReg, IrqFlag);
-    epicsUInt32 enable = READ32(evg->m_pReg, IrqEnable);
-    epicsUInt32 active = flags & enable;
+    epicsUInt32 active = flags & evg->shadowIrqEnable;
 
 #if defined(vxWorks) || defined(__rtems__)
     if(!active) {
 #  ifdef __rtems__
         if(!pci)
-            printk("evgMrm::isr with no active VME IRQ 0x%08x 0x%08x\n", flags, enable);
+            printk("evgMrm::isr with no active VME IRQ 0x%08x 0x%08x\n", flags, evg->shadowIrqEnable);
 #else
         (void)pci;
 #  endif
@@ -328,43 +327,19 @@ evgMrm::isr(evgMrm *evg, bool pci) {
 #endif
 
     if(active & EVG_IRQ_START_RAM(0)) {
-        if(evg->irqStart0_queued==0) {
-            callbackRequest(&evg->irqStart0_cb);
-            evg->irqStart0_queued=1;
-        } else if(evg->irqStart0_queued==1) {
-            WRITE32(evg->getRegAddr(), IrqEnable, enable & ~EVG_IRQ_START_RAM(0));
-            evg->irqStart0_queued=2;
-        }
+        evg->m_seq.doStartOfSequence(0);
     }
 
     if(active & EVG_IRQ_START_RAM(1)) {
-        if(evg->irqStart1_queued==0) {
-            callbackRequest(&evg->irqStart1_cb);
-            evg->irqStart1_queued=1;
-        } else if(evg->irqStart1_queued==1) {
-            WRITE32(evg->getRegAddr(), IrqEnable, enable & ~EVG_IRQ_START_RAM(1));
-            evg->irqStart1_queued=2;
-        }
+        evg->m_seq.doStartOfSequence(1);
     }
 
     if(active & EVG_IRQ_STOP_RAM(0)) {
-        if(evg->irqStop0_queued==0) {
-            callbackRequest(&evg->irqStop0_cb);
-            evg->irqStop0_queued=1;
-        } else if(evg->irqStop0_queued==1) {
-            WRITE32(evg->getRegAddr(), IrqEnable, enable & ~EVG_IRQ_STOP_RAM(0));
-            evg->irqStop0_queued=2;
-        }
+        evg->m_seq.doEndOfSequence(0);
     }
 
     if(active & EVG_IRQ_STOP_RAM(1)) {
-        if(evg->irqStop1_queued==0) {
-            callbackRequest(&evg->irqStop1_cb);
-            evg->irqStop1_queued=1;
-        } else if(evg->irqStop1_queued==1) {
-            WRITE32(evg->getRegAddr(), IrqEnable, enable & ~EVG_IRQ_STOP_RAM(1));
-            evg->irqStop1_queued=2;
-        }
+        evg->m_seq.doEndOfSequence(1);
     }
 
     if(active & EVG_IRQ_EXT_INP) {
@@ -372,202 +347,58 @@ evgMrm::isr(evgMrm *evg, bool pci) {
             callbackRequest(&evg->irqExtInp_cb);
             evg->irqExtInp_queued=1;
         } else if(evg->irqExtInp_queued==1) {
-            WRITE32(evg->getRegAddr(), IrqEnable, enable & ~EVG_IRQ_EXT_INP);
+            evg->shadowIrqEnable &= ~EVG_IRQ_EXT_INP;
             evg->irqExtInp_queued=2;
         }
     }
 
+    WRITE32(evg->getRegAddr(), IrqEnable, evg->shadowIrqEnable);
     WRITE32(evg->m_pReg, IrqFlag, flags);  // Clear the interrupt causes
     READ32(evg->m_pReg, IrqFlag);          // Make sure the clear completes before returning
 
-    return;
+}catch(...){
+    epicsInterruptContextMessage("c++ Exception in ISR!!!\n");
 }
-
-void
-evgMrm::process_eos0_cb(CALLBACK *pCallback) {
-    void* pVoid;
-    evgSeqRam* seqRam;
-    
-    callbackGetUser(pVoid, pCallback);
-    seqRam = (evgSeqRam*)pVoid;
-    if(!seqRam)
-        return;
-
-    {
-        interruptLock ig;
-        if(seqRam->m_owner->irqStop0_queued==2)
-            BITSET32(seqRam->m_owner->getRegAddr(), IrqEnable, EVG_IRQ_STOP_RAM(0));
-        seqRam->m_owner->irqStop0_queued=0;
-    }
-
-    seqRam->process_eos();
-}
-
-void
-evgMrm::process_eos1_cb(CALLBACK *pCallback) {
-    void* pVoid;
-    evgSeqRam* seqRam;
-
-    callbackGetUser(pVoid, pCallback);
-    seqRam = (evgSeqRam*)pVoid;
-    if(!seqRam)
-        return;
-
-    {
-        interruptLock ig;
-        if(seqRam->m_owner->irqStop1_queued==2)
-            BITSET32(seqRam->m_owner->getRegAddr(), IrqEnable, EVG_IRQ_STOP_RAM(1));
-        seqRam->m_owner->irqStop1_queued=0;
-    }
-
-    seqRam->process_eos();
-}
-
-void
-evgMrm::process_sos0_cb(CALLBACK *pCallback) {
-    void* pVoid;
-    evgSeqRam* seqRam;
-
-    callbackGetUser(pVoid, pCallback);
-    seqRam = (evgSeqRam*)pVoid;
-    if(!seqRam)
-        return;
-
-    {
-        interruptLock ig;
-        if(seqRam->m_owner->irqStart0_queued==2)
-            BITSET32(seqRam->m_owner->getRegAddr(), IrqEnable, EVG_IRQ_START_RAM(0));
-        seqRam->m_owner->irqStart0_queued=0;
-    }
-
-    seqRam->process_sos();
-}
-
-void
-evgMrm::process_sos1_cb(CALLBACK *pCallback) {
-    void* pVoid;
-    evgSeqRam* seqRam;
-
-    callbackGetUser(pVoid, pCallback);
-    seqRam = (evgSeqRam*)pVoid;
-    if(!seqRam)
-        return;
-
-    {
-        interruptLock ig;
-        if(seqRam->m_owner->irqStart1_queued==2)
-            BITSET32(seqRam->m_owner->getRegAddr(), IrqEnable, EVG_IRQ_START_RAM(1));
-        seqRam->m_owner->irqStart1_queued=0;
-    }
-
-    seqRam->process_sos();
 }
 
 void
 evgMrm::process_inp_cb(CALLBACK *pCallback) {
     void* pVoid;
     callbackGetUser(pVoid, pCallback);
-    evgMrm* evg = (evgMrm*)pVoid;
+    evgMrm* evg = static_cast<evgMrm*>(pVoid);
 
     {
         interruptLock ig;
-        if(evg->irqExtInp_queued==2)
-            BITSET32(evg->getRegAddr(), IrqEnable, EVG_IRQ_EXT_INP);
+        if(evg->irqExtInp_queued==2) {
+            evg->shadowIrqEnable |= EVG_IRQ_EXT_INP;
+            WRITE32(evg->getRegAddr(), IrqEnable, evg->shadowIrqEnable);
+        }
         evg->irqExtInp_queued=0;
     }
      
-    epicsUInt32 data = evg->sendTimestamp();
-    if(!data)
-        return;
-
-    for(int i = 0; i < 32; data <<= 1, i++) {
-        if( data & 0x80000000 )
-            evg->getSoftEvt()->setEvtCode(MRF_EVENT_TS_SHIFT_1);
-        else
-            evg->getSoftEvt()->setEvtCode(MRF_EVENT_TS_SHIFT_0);
-    }
+    evg->tickSecond();
+    scanIoRequest(evg->ioScanTimestamp);
 }
 
-epicsUInt32
-evgMrm::sendTimestamp() {
-    /*Start the timer*/
-    m_timerEvent->signal();
-
-    /*If the time since last update is more than 1.5 secs(i.e. if wdTimer expires) 
-    then we need to resync the time after 5 good pulses*/
-    if(m_wdTimer->getPilotCount()) {
-        m_wdTimer->decrPilotCount();
-        if(m_wdTimer->getPilotCount() == 0) {
-            syncTimestamp();
-            printf("Starting timestamping\n");
-            ((epicsTime)getTimestamp()).show(1);
-        }
-        return 0;
-    }
-
-    m_alarmTimestamp = TS_ALARM_NONE;
-
-    incrTimestamp();
+void
+evgMrm::postSoftSecondsSrc()
+{
+    tickSecond();
     scanIoRequest(ioScanTimestamp);
-
-    if(m_syncTimestamp) {
-        syncTimestamp();
-        m_syncTimestamp = false;
-    }
-
-    struct epicsTimeStamp ts;
-    epicsTime ntpTime, storedTime;
-    if(epicsTimeOK == generalTimeGetExceptPriority(&ts, 0, 50)) {
-        ntpTime = ts;
-        storedTime = (epicsTime)getTimestamp();
-
-        double errorTime = ntpTime - storedTime;
-
-        /*If there is an error between storedTime and ntpTime then we just print
-            the relevant information but we send out storedTime*/
-        if(fabs(errorTime) > evgAllowedTsGitter) {
-            m_alarmTimestamp = TS_ALARM_MINOR;
-            printf("NTP time:\n");
-            ntpTime.show(1);
-            printf("EVG time:\n");
-            storedTime.show(1);
-            printf("----Timestamping Error of %f Secs----\n", errorTime);
-        } 
-    }
-
-    return getTimestamp().secPastEpoch + 1 + POSIX_TIME_AT_EPICS_EPOCH;
-}
-
-epicsTimeStamp
-evgMrm::getTimestamp() const {
-    return m_timestamp;
 }
 
 void
-evgMrm::incrTimestamp() {
-    m_timestamp.secPastEpoch++;
-}
+evgMrm::setEvtCode(epicsUInt32 evtCode) {
+    if(evtCode > 255)
+        throw std::runtime_error("Event Code out of range. Valid range: 0 - 255.");
 
-void
-evgMrm::syncTimestamp() {
-    if(epicsTimeOK != generalTimeGetExceptPriority(&m_timestamp, 0, 50))
-        return;
-    /*
-     * Generally nano seconds should be close to zero.
-     *  So the seconds value should be rounded to the nearest interger
-     *  e.g. 26.000001000 should be rounded to 26 and
-     *       26.996234643 should be rounded to 27.
-     *  Also the nano second value can be assumed to be zero.
-     */
-    if(m_timestamp.nsec > 500*pow(10.0,6))
-        incrTimestamp();
-    
-    m_timestamp.nsec = 0;
-}
+    SCOPED_LOCK(m_lock);
 
-void
-evgMrm::syncTsRequest(bool) {
-    m_syncTimestamp = true;
+    while(READ32(m_pReg, SwEvent) & SwEvent_Pend) {}
+
+    WRITE32(m_pReg, SwEvent,
+            (evtCode<<SwEvent_Code_SHIFT)
+            |SwEvent_Ena);
 }
 
 /**    Access    functions     **/
@@ -575,43 +406,6 @@ evgMrm::syncTsRequest(bool) {
 evgEvtClk*
 evgMrm::getEvtClk() {
     return &m_evtClk;
-}
-
-evgAcTrig*
-evgMrm::getAcTrig() {
-    return &m_acTrig;
-}
-
-evgSoftEvt*
-evgMrm::getSoftEvt() {
-    return &m_softEvt;
-}
-
-evgTrigEvt*
-evgMrm::getTrigEvt(epicsUInt32 evtTrigNum) {
-    evgTrigEvt* trigEvt = m_trigEvt[evtTrigNum];
-    if(!trigEvt)
-        throw std::runtime_error("Event Trigger not initialized");
-
-    return trigEvt;
-}
-
-evgMxc* 
-evgMrm::getMuxCounter(epicsUInt32 muxNum) {
-    evgMxc* mxc =    m_muxCounter[muxNum];
-    if(!mxc)
-        throw std::runtime_error("Multiplexed Counter not initialized");
-
-    return mxc;
-}
-
-evgDbus*
-evgMrm::getDbus(epicsUInt32 dbusBit) {
-    evgDbus* dbus = m_dbus[dbusBit];
-    if(!dbus)
-        throw std::runtime_error("Event Dbus not initialized");
-
-    return dbus;
 }
 
 evgInput*
@@ -623,42 +417,16 @@ evgMrm::getInput(epicsUInt32 inpNum, InputType type) {
     return inp;
 }
 
-evgOutput*
-evgMrm::getOutput(epicsUInt32 outNum, evgOutputType type) {
-    evgOutput* out = m_output[ std::pair<epicsUInt32, evgOutputType>(outNum, type) ];
-    if(!out)
-        throw std::runtime_error("Output not initialized");
-
-    return out;
-}
-
-evgSeqRamMgr*
-evgMrm::getSeqRamMgr() {
-    return &m_seqRamMgr;
-}
-
-evgSoftSeqMgr*
-evgMrm::getSoftSeqMgr() {
-    return &m_softSeqMgr;
-}
-
 epicsEvent* 
 evgMrm::getTimerEvent() {
-    return m_timerEvent;
+    return &m_timerEvent;
 }
 
-bus_configuration *evgMrm::getBusConfiguration()
+const bus_configuration *evgMrm::getBusConfiguration()
 {
     return &busConfiguration;
 }
 
-namespace {
-    struct showSoftSeq {int lvl; void operator()(evgSoftSeq* seq){seq->show(lvl);}};
-}
-
 void evgMrm::show(int lvl)
 {
-    showSoftSeq ss;
-    ss.lvl = lvl;
-    m_softSeqMgr.visit(ss);
 }

@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <cstdlib>
@@ -83,7 +83,7 @@ static long add_lo(dbCommon* praw)
     try {
         assert(prec->out.type==INST_IO);
 
-        std::auto_ptr<map_priv> priv(new map_priv);
+        mrf::auto_ptr<map_priv> priv(new map_priv);
 
         if (linkOptionsStore(eventdef, priv.get(), prec->out.value.instio.string, 0))
             throw std::runtime_error("Couldn't parse link string");
@@ -119,10 +119,10 @@ static inline
 long del_lo(dbCommon* praw)
 {
     try {
-        std::auto_ptr<map_priv> priv((map_priv*)praw->dpvt);
+        mrf::auto_ptr<map_priv> priv(static_cast<map_priv*>(praw->dpvt));
 
-    if (!priv.get())
-        return -2;
+        if (!priv.get())
+            return -2;
 
         if(priv->last_code>0 && priv->last_code<=255)
             priv->card->specialSetMap(priv->last_code,priv->func,false);
@@ -185,7 +185,8 @@ common_dset devLOEVRMap = {
     dset_cast(&init_dset<&dxtLOEVRMap>),
     (DEVSUPFUN) init_record_empty,
     NULL,
-    (DEVSUPFUN) write_lo
+    (DEVSUPFUN) write_lo,
+    NULL
 };
 epicsExportAddress(dset,devLOEVRMap);
 

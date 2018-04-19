@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef PRESCALER_HPP_INC
@@ -13,12 +13,11 @@
 
 #include <epicsTypes.h>
 
-#include <evr/util.h>
 #include "mrf/object.h"
 
-class epicsShareClass EVR;
+class EVR;
 
-class epicsShareClass PreScaler : public mrf::ObjectInst<PreScaler>, public IOStatus
+class epicsShareClass PreScaler : public mrf::ObjectInst<PreScaler>
 {
 public:
   PreScaler(const std::string& n, EVR& o):mrf::ObjectInst<PreScaler>(n),owner(o){};
