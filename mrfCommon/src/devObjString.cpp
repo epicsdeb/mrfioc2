@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 #ifdef _WIN32
  #define NOMINMAX
@@ -20,11 +20,11 @@
 
 using namespace mrf;
 
-/************** mbbi *************/
+/************** stringin *************/
 
 static long read_string(stringinRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<std::string> *priv=(addr<std::string>*)prec->dpvt;
 
@@ -40,10 +40,7 @@ try {
     prec->val[len]=0;
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 OBJECT_DSET(SIFromString,
@@ -53,10 +50,11 @@ OBJECT_DSET(SIFromString,
             &read_string,
             NULL);
 
+/************ stringout *********/
 
 static long write_string(stringoutRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<std::string> *priv=(addr<std::string>*)prec->dpvt;
 
@@ -66,10 +64,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: write error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 OBJECT_DSET(SOFromString,

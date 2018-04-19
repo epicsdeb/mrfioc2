@@ -29,15 +29,15 @@ The canonical version of this page is @url http://epics.sourceforge.net/mrfioc2/
 
 @subsection requires Requires
 
-EPICS Base >= 3.14.8.2
+EPICS Base >= 3.14.10
 
 @url http://www.aps.anl.gov/epics/
 
-MSI (Macro expension tool)
+MSI (Macro expansion tool)  Required with Base < 3.15.1
 
 @url http://www.aps.anl.gov/epics/extensions/msi/index.php
 
-devLib2 >= 2.6
+devLib2 >= 2.9
 
 @url http://epics.sourceforge.net/devlib2/
 
@@ -45,9 +45,22 @@ RTEMS >= 4.9.x, vxWorks >=6.7, or Linux >= 2.6.26.
 
 @section hardware Supported Hardware
 
-Event Generators.  VME-EVG-230 and cPCI-EVG-300
+- Event Generators
+ - VME-EVG-230
+ - PXI-EVG-220
+ - PXI-EVG-230
+ - cPCI-EVG-300
 
-Event Receivers.  VME-EVR-230RF, VME-EVR-230 (non-RF), PMC-EVR-230, cPCI-EVR-230, cPCI-EVRTG-300, cPCI-EVR-300, PCIe-EVR-300
+- Event Receivers
+ - VME-EVR-230RF
+ - VME-EVR-230 (non-RF)
+ - PMC-EVR-230
+ - cPCI-EVR-230
+ - cPCI-EVRTG-300
+ - cPCI-EVR-300
+ - PCIe-EVR-300DC
+ - mTCA-EVR-300
+ - FRIB EVR (not MRF product)
 
 @section doc Documentation
 
@@ -62,6 +75,26 @@ and mrmEvrSetupVME() or the ::EVRMRM class.
 For the generator see mrmEvgSetupVME() or the ::evgMrm class.
 
 @section changelog Changelog
+
+@subsection v220 2.2.0 (UNRELEASED)
+
+@subsubsection v220_compat Incompatible changes
+
+@li Requires devlib2 >=2.9
+@li Some software sequencer control records have changed to accommodate sequencer support in the 300DC series EVRs.  Updated cs-studio/BOY .opi files.
+@li Remove support for sequencer "Automatic" (continuous) trigger mode, also Pause and Abort actions.
+@li EDM files removed due to lack of maintenance.
+
+@subsubsection v220_add Additions
+
+@li Add support for mTCA-EVR-300 and PCIe-EVR-300DC.  Requires firmware >=207.  Tested with firmware >=207.6.
+@li Add support for PXI-EVG-220.  Support for PXI-EVG-230 was added in 2.1.0, but not documented.
+@li Add driver for FRIB developed mTCA EVR
+@li mrmEvrSetupPCI() accepts "slot=#" in addition to PCI geographic address
+@li linux: kernel module exports PCI ID table to enable automatic module loading
+@li Firmware upgrade via PCIe flash access for mTCA-EVR-300 and PCIe-EVR-300DC.  See EVR manual for details.
+@li EVG add 1 PPS source option "Sys Clk" to simulate external HW clock using system clock.
+@li EVR add 1 PPS and timestamp source simulation.
 
 @subsection v210 2.1.0 (Oct. 2016)
 
@@ -128,7 +161,7 @@ For the generator see mrmEvgSetupVME() or the ::evgMrm class.
 - I am considering removal of the EVR interface class.  This was originally
   intended to allow "similar" hardware (pre-MRM cards from MRF).  However,
   to my knowledge this has not been done.  If anyone is using this feature
-  please contact me (mdavidsaver@bnl.gov) or it will likely be removed
+  please contact me (mdavidsaver@gmail.com) or it will likely be removed
   in the next (2.1) release.
 
 @subsubsection v202bug Bug fixes
@@ -206,7 +239,7 @@ For the generator see mrmEvgSetupVME() or the ::evgMrm class.
 
 @li Initial release.
 
-@author Michael Davidsaver <mdavidsaver@bnl.gov>
+@author Michael Davidsaver <mdavidsaver@gmail.com>
 
 @author Jayesh Shah <jshah@bnl.gov>
 
@@ -221,6 +254,8 @@ For the generator see mrmEvgSetupVME() or the ::evgMrm class.
 @author Jure Krasna <jure.krasna@cosylab.com>
 
 @author Dirk Zimoch <dirk.zimoch@psi.ch>
+
+@author Anton Derbenev <aderbenev@bnl.gov>
 
 */
 

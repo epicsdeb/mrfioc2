@@ -6,7 +6,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <cstdio>
@@ -47,13 +47,29 @@
 #  include "devLibPCI.h"
 #endif
 
-#include <epicsExport.h>
-
 #include "drvem.h"
 
+#include <epicsExport.h>
+
+/* whether to use features introduced to support
+ * parallel handling of shared callback queues.
+ */
+#if EPICS_VERSION_INT>=VERSION_INT(3,15,0,2)
+#  define HAVE_PARALLEL_CB
+#endif
+
+int evrMrmSPIDebug;
+int evrMrmTimeDebug;
 int evrDebug;
+//! value in nanoseconds above which a timestamp is considered invalid.
+//! below is truncated.  May be necessary when simulating timestamp
+//! source in software
+int evrMrmTimeNSOverflowThreshold;
 extern "C" {
  epicsExportAddress(int, evrDebug);
+ epicsExportAddress(int, evrMrmSPIDebug);
+ epicsExportAddress(int, evrMrmTimeDebug);
+ epicsExportAddress(int, evrMrmTimeNSOverflowThreshold);
 }
 
 using namespace std;
@@ -107,7 +123,8 @@ EVRMRM::EVRMRM(const std::string& n,
                bus_configuration& busConfig, const Config *c,
                volatile unsigned char* b,
                epicsUInt32 bl)
-  :EVR(n,busConfig)
+  :base_t(n,busConfig)
+  ,TimeStampSource(1.0)
   ,evrLock()
   ,conf(c)
   ,base(b)
@@ -131,6 +148,7 @@ EVRMRM::EVRMRM(const std::string& n,
   // 3 because 2 IRQ events, and 1 shutdown event
   ,drain_fifo_wakeup(3,sizeof(int))
   ,count_FIFO_sw_overrate(0)
+  ,timeSrcMode(Disable)
   ,stampClock(0.0)
   ,shadowSourceTS(TSSourceInternal)
   ,shadowCounterPS(0)
@@ -139,18 +157,24 @@ EVRMRM::EVRMRM(const std::string& n,
   ,lastValidTimestamp(0)
 {
 try{
-    epicsUInt32 v, evr,ver;
+    const epicsUInt32 rawver = fpgaFirmware();
+    const epicsUInt32 boardtype = (rawver&FWVersion_type_mask)>>FWVersion_type_shift;
+    const epicsUInt32 formfactor = (rawver&FWVersion_form_mask)>>FWVersion_form_shift;
+    const MRFVersion ver(rawver);
 
-    v = fpgaFirmware();
-    evr=v&FWVersion_type_mask;
-    evr>>=FWVersion_type_shift;
-
-    if(evr!=0x1)
+    if(boardtype!=0x1)
         throw std::runtime_error("Address does not correspond to an EVR");
 
-    ver = version();
-    if(ver<3)
-        throw std::runtime_error("Firmware versions < 3 not supported");
+    if(ver<MRFVersion(0,3))
+        throw std::runtime_error("Firmware 0 version < 3 not supported");
+    else if(ver.firmware()==2 && ver<MRFVersion(2,7))
+        throw std::runtime_error("Firmware 2 version < 207 not supported");
+
+    if(ver.firmware()==2 && ver<MRFVersion(2,7,6))
+        printf("Warning: Recommended minimum firmware 2 version is 207.6\n");
+
+    if(ver.firmware()!=0 && ver.firmware()!=2)
+        printf("Warning: Unknown firmware series %u.  Your milage may vary\n", ver.firmware());
 
     scanIoInit(&IRQmappedEvent);
     scanIoInit(&IRQheartbeat);
@@ -159,13 +183,17 @@ try{
     scanIoInit(&timestampValidChange);
 
     CBINIT(&data_rx_cb   , priorityHigh, &mrmBufRx::drainbuf, &this->bufrx);
-    CBINIT(&drain_log_cb , priorityMedium, &EVRMRM::drain_log , this);
     CBINIT(&poll_link_cb , priorityMedium, &EVRMRM::poll_link , this);
 
-    if(ver>=5) {
+    if(ver>=MRFVersion(0, 5)) {
         std::ostringstream name;
         name<<n<<":SFP";
         sfp.reset(new SFP(name.str(), base + U32_SFPEEPROM_base));
+    }
+
+    if(ver>=MRFVersion(2,7)) {
+        printf("Sequencer capability detected\n");
+        seq.reset(new EvrSeqManager(this));
     }
 
     /*
@@ -215,6 +243,12 @@ try{
         outputs[std::make_pair(OutputRB,i)]=new MRMOutput(name.str(), this, OutputRB, i);
     }
 
+    for(unsigned int i=0; i<conf->nOBack; i++){
+        std::ostringstream name;
+        name<<n<<":Backplane"<<i;
+        outputs[std::make_pair(OutputRB,i)]=new MRMOutput(name.str(), this, OutputBackplane, i);
+    }
+
     prescalers.resize(conf->nPS);
     for(size_t i=0; i<conf->nPS; i++){
         std::ostringstream name;
@@ -222,28 +256,46 @@ try{
         prescalers[i]=new MRMPreScaler(name.str(), *this,base+U32_Scaler(i));
     }
 
-    pulsers.resize(conf->nPul);
+    pulsers.resize(32);
     for(epicsUInt32 i=0; i<conf->nPul; i++){
         std::ostringstream name;
         name<<n<<":Pul"<<i;
         pulsers[i]=new MRMPulser(name.str(), i,*this);
     }
+    if(ver>=MRFVersion(2,0)) {
+        // masking pulsers
+        for(epicsUInt32 i=28; i<=31; i++){
+            std::ostringstream name;
+            name<<n<<":Pul"<<i;
+            pulsers[i]=new MRMPulser(name.str(), i,*this);
+        }
 
-    if(v==formFactor_CPCIFULL) {
-        shortcmls.resize(8);
+    }
+
+    if(formfactor==formFactor_CPCIFULL) {
         for(unsigned int i=4; i<8; i++) {
             std::ostringstream name;
             name<<n<<":FrontOut"<<i;
             outputs[std::make_pair(OutputFP,i)]=new MRMOutput(name.str(), this, OutputFP, i);
         }
-        for(size_t i=0; i<4; i++)
-            shortcmls[i]=0;
+        shortcmls.resize(8, 0);
         shortcmls[4]=new MRMCML(n+":CML4", 4,*this,MRMCML::typeCML,form);
         shortcmls[5]=new MRMCML(n+":CML5", 5,*this,MRMCML::typeCML,form);
         shortcmls[6]=new MRMCML(n+":CML6", 6,*this,MRMCML::typeTG300,form);
         shortcmls[7]=new MRMCML(n+":CML7", 7,*this,MRMCML::typeTG300,form);
 
-    } else if(conf->nCML && ver>=4){
+    } else if(formfactor==formFactor_mTCA) {
+
+        // mapping to TCLKA and TCLKB as UNIV16, 17
+        // we move down to UNIV0, 1
+        outputs[std::make_pair(OutputFPUniv,0)]=new MRMOutput(SB()<<n<<":FrontUnivOut0", this, OutputFPUniv, 16);
+        outputs[std::make_pair(OutputFPUniv,1)]=new MRMOutput(SB()<<n<<":FrontUnivOut1", this, OutputFPUniv, 17);
+
+        shortcmls.resize(2);
+        shortcmls[0]=new MRMCML(n+":CML0", 0,*this,MRMCML::typeCML,form);
+        shortcmls[1]=new MRMCML(n+":CML1", 1,*this,MRMCML::typeCML,form);
+
+    } else if(conf->nCML && ver>=MRFVersion(0,4)){
         shortcmls.resize(conf->nCML);
         for(size_t i=0; i<conf->nCML; i++){
             std::ostringstream name;
@@ -306,6 +358,9 @@ try{
 
     drain_fifo_task.start();
 
+    if(busConfig.busType==busType_pci)
+        mrf::SPIDevice::registerDev(n+":FLASH", mrf::SPIDevice(this, 1));
+
 } catch (std::exception& e) {
     printf("Aborting EVR initializtion: %s\n", e.what());
     cleanup();
@@ -315,6 +370,8 @@ try{
 
 EVRMRM::~EVRMRM()
 {
+    if(getBusConfiguration()->busType==busType_pci)
+        mrf::SPIDevice::unregisterDev(name()+":FLASH");
     cleanup();
 }
 
@@ -346,6 +403,72 @@ EVRMRM::cleanup()
     printf("complete\n");
 }
 
+void EVRMRM::select(unsigned id)
+{
+    if(evrMrmSPIDebug)
+        printf("SPI: select %u\n", id);
+
+    if(id==0) {
+        // deselect
+        WRITE32(base, SPIDCtrl, SPIDCtrl_OE);
+        // wait a bit to ensure the chip sees deselect
+        epicsThreadSleep(0.001);
+        // disable drivers
+        WRITE32(base, SPIDCtrl, 0);
+    } else {
+        // drivers on w/ !SS
+        WRITE32(base, SPIDCtrl, SPIDCtrl_OE);
+        // wait a bit to ensure the chip sees deselect
+        epicsThreadSleep(0.001);
+        // select
+        WRITE32(base, SPIDCtrl, SPIDCtrl_OE|SPIDCtrl_SS);
+    }
+}
+
+epicsUInt8 EVRMRM::cycle(epicsUInt8 in)
+{
+    double timeout = this->timeout();
+
+    if(evrMrmSPIDebug)
+        printf("SPI %02x ", int(in));
+
+    // wait for send ready to be set
+    {
+        mrf::TimeoutCalculator T(timeout);
+        while(T.ok() && !(READ32(base, SPIDCtrl)&SPIDCtrl_SendRdy))
+            epicsThreadSleep(T.inc());
+        if(!T.ok())
+            throw std::runtime_error("SPI cycle timeout2");
+
+        if(evrMrmSPIDebug)
+            printf("(%f) ", T.sofar());
+    }
+
+    WRITE32(base, SPIDData, in);
+
+    if(evrMrmSPIDebug)
+        printf("-> ");
+
+    // wait for recv ready to be set
+    {
+        mrf::TimeoutCalculator T(timeout);
+        while(T.ok() && !(READ32(base, SPIDCtrl)&SPIDCtrl_RecvRdy))
+            epicsThreadSleep(T.inc());
+        if(!T.ok())
+            throw std::runtime_error("SPI cycle timeout2");
+
+        if(evrMrmSPIDebug)
+            printf("(%f) ", T.sofar());
+    }
+
+    epicsUInt8 ret = READ32(base, SPIDData)&0xff;
+
+    if(evrMrmSPIDebug) {
+        printf("%02x\n", int(ret));
+    }
+    return ret;
+}
+
 string EVRMRM::model() const
 {
     return conf->model;
@@ -356,12 +479,9 @@ EVRMRM::fpgaFirmware(){
     return READ32(base, FWVersion);
 }
 
-epicsUInt32
-EVRMRM::version() const
+MRFVersion EVRMRM::version() const
 {
-    epicsUInt32 v = READ32(base, FWVersion);
-
-    return (v&FWVersion_ver_mask)>>FWVersion_ver_shift;
+    return MRFVersion(READ32(base, FWVersion));
 }
 
 formFactor
@@ -369,7 +489,7 @@ EVRMRM::getFormFactor(){
     epicsUInt32 v = READ32(base, FWVersion);
     epicsUInt32 form = (v&FWVersion_form_mask)>>FWVersion_form_shift;
 
-    if(form <= formFactor_PCIe) return (formFactor)form;
+    if(form <= formFactor_mTCA) return (formFactor)form;
     else return formFactor_unknown;
 }
 
@@ -394,6 +514,10 @@ EVRMRM::formFactorStr(){
 
     case formFactor_PCIe:
         text = "PCIe";
+        break;
+
+    case formFactor_mTCA:
+        text = "mTCA";
         break;
 
     case formFactor_PXIe:
@@ -432,102 +556,11 @@ EVRMRM::enable(bool v)
         BITCLR(NAT,32,base, Control, Control_enable|Control_mapena|Control_outena|Control_evtfwd);
 }
 
-MRMPulser*
-EVRMRM::pulser(epicsUInt32 i)
-{
-    if(i>=pulsers.size())
-        throw std::out_of_range("Pulser id is out of range");
-    return pulsers[i];
-}
-
-const MRMPulser*
-EVRMRM::pulser(epicsUInt32 i) const
-{
-    if(i>=pulsers.size())
-        throw std::out_of_range("Pulser id is out of range");
-    return pulsers[i];
-}
-
-MRMOutput*
-EVRMRM::output(OutputType otype,epicsUInt32 idx)
-{
-    outputs_t::iterator it=outputs.find(std::make_pair(otype,idx));
-    if(it==outputs.end())
-        return 0;
-    else
-        return it->second;
-}
-
-const MRMOutput*
-EVRMRM::output(OutputType otype,epicsUInt32 idx) const
-{
-    outputs_t::const_iterator it=outputs.find(std::make_pair(otype,idx));
-    if(it==outputs.end())
-        return 0;
-    else
-        return it->second;
-}
-
 bool
 EVRMRM::mappedOutputState() const
 {
     NAT_WRITE32(base, IRQFlag, IRQ_HWMapped);
     return NAT_READ32(base, IRQFlag) & IRQ_HWMapped;
-}
-
-DelayModule*
-EVRMRM::delay(epicsUInt32 i){
-    if(i>=delays.size())
-        throw std::out_of_range("Delay Module id is out of range.");
-    return delays[i];
-}
-
-MRMInput*
-EVRMRM::input(epicsUInt32 i)
-{
-    if(i>=inputs.size())
-        throw std::out_of_range("Input id is out of range");
-    return inputs[i];
-}
-
-const MRMInput*
-EVRMRM::input(epicsUInt32 i) const
-{
-    if(i>=inputs.size())
-        throw std::out_of_range("Input id is out of range");
-    return inputs[i];
-}
-
-MRMPreScaler*
-EVRMRM::prescaler(epicsUInt32 i)
-{
-    if(i>=prescalers.size())
-        throw std::out_of_range("PreScaler id is out of range");
-    return prescalers[i];
-}
-
-const MRMPreScaler*
-EVRMRM::prescaler(epicsUInt32 i) const
-{
-    if(i>=prescalers.size())
-        throw std::out_of_range("PreScaler id is out of range");
-    return prescalers[i];
-}
-
-MRMCML*
-EVRMRM::cml(epicsUInt32 i)
-{
-    if(i>=shortcmls.size() || !shortcmls[i])
-        throw std::out_of_range("CML Short id is out of range");
-    return shortcmls[i];
-}
-
-const MRMCML*
-EVRMRM::cml(epicsUInt32 i) const
-{
-    if(i>=shortcmls.size() || !shortcmls[i])
-        throw std::out_of_range("CML Short id is out of range");
-    return shortcmls[i];
 }
 
 MRMGpio*
@@ -862,6 +895,9 @@ EVRMRM::convertTS(epicsTimeStamp* ts)
     if(ts->secPastEpoch==lastInvalidTimestamp) {
         timestampValid=0;
         scanIoRequest(timestampValidChange);
+        if(evrMrmTimeDebug>0)
+            errlogPrintf("TS convert repeats known bad value new %08x bad %08x\n",
+                         (unsigned)ts->secPastEpoch, (unsigned)lastInvalidTimestamp);
         return false;
     }
 
@@ -888,11 +924,22 @@ EVRMRM::convertTS(epicsTimeStamp* ts)
     ts->nsec=(epicsUInt32)(ts->nsec*period);
 
     // 1 sec. reset is late
-    if(ts->nsec>=1000000000) {
-        timestampValid=0;
-        lastInvalidTimestamp=ts->secPastEpoch;
-        scanIoRequest(timestampValidChange);
-        return false;
+    if(ts->nsec>=1000000000u) {
+        if(evrMrmTimeDebug>0)
+            errlogPrintf("TS convert NS overflow %08x %08x oflow=%u\n",
+                         (unsigned)ts->secPastEpoch, (unsigned)ts->nsec,
+                         unsigned(ts->nsec-1000000000u));
+
+        // out of bounds
+        if(int(ts->nsec-1000000000u)>=evrMrmTimeNSOverflowThreshold) {
+            timestampValid=0;
+            lastInvalidTimestamp=ts->secPastEpoch;
+            scanIoRequest(timestampValidChange);
+
+            return false;
+        }
+        // otherwise, truncate
+        ts->nsec = 999999999u;
     }
 
     //Link seconds counter is POSIX time
@@ -949,6 +996,138 @@ EVRMRM::dbus() const
     return (READ32(base, Status) & Status_dbus_mask) >> Status_dbus_shift;
 }
 
+bool
+EVRMRM::dcEnabled() const
+{
+    return READ32(base, Control) & Control_DCEna;
+}
+
+void
+EVRMRM::dcEnable(bool v)
+{
+    if(v)
+        BITSET32(base, Control, Control_DCEna);
+    else
+        BITCLR32(base, Control, Control_DCEna);
+}
+
+double
+EVRMRM::dcTarget() const
+{
+    double period=1e9/clock(); // in nanoseconds
+    return double(READ32(base, DCTarget))/65536.0*period;
+}
+
+void
+EVRMRM::dcTargetSet(double val)
+{
+    double period=1e9/clock(); // in nanoseconds
+
+    val /= period;
+    val *= 65536.0;
+    WRITE32(base, DCTarget, val);
+}
+
+double
+EVRMRM::dcRx() const
+{
+    double period=1e9/clock(); // in nanoseconds
+    return double(READ32(base, DCRxVal))/65536.0*period;
+}
+
+double
+EVRMRM::dcInternal() const
+{
+    double period=1e9/clock(); // in nanoseconds
+    return double(READ32(base, DCIntVal))/65536.0*period;
+}
+
+epicsUInt32
+EVRMRM::dcStatusRaw() const
+{
+    return READ32(base, DCStatus);
+}
+
+epicsUInt32
+EVRMRM::topId() const
+{
+    return READ32(base, TOPID);
+}
+
+void
+EVRMRM::setEvtCode(epicsUInt32 code)
+{
+    if(code==0) return;
+    else if(code>255) throw std::runtime_error("Event code out of range");
+    SCOPED_LOCK(evrLock);
+
+    unsigned i;
+
+    // spin fast
+    for(i=0; i<100 && READ32(base, SwEvent) & SwEvent_Pend; i++) {}
+
+    if(i==100) {
+        // spin slow for <= 50ms
+        for(i=0; i<5 && READ32(base, SwEvent) & SwEvent_Pend; i++)
+            epicsThreadSleep(0.01);
+
+        if(i==5)
+            throw std::runtime_error("SwEvent timeout");
+    }
+
+    WRITE32(base, SwEvent, (code<<SwEvent_Code_SHIFT)|SwEvent_Ena);
+}
+
+epicsUInt32 EVRMRM::timeSrc() const
+{
+    SCOPED_LOCK(evrLock);
+    return timeSrcMode;
+}
+
+void EVRMRM::setTimeSrc(epicsUInt32 raw)
+{
+    switch((timeSrcMode_t)raw) {
+    case Disable:
+    case External:
+    case SysClk:
+        break;
+    default:
+        throw std::runtime_error("Unsupported time source mode");
+    }
+    timeSrcMode_t mode((timeSrcMode_t)raw);
+
+    SCOPED_LOCK(evrLock);
+
+    if(timeSrcMode!=mode)
+        softSecondsSrc(mode==SysClk);
+
+    timeSrcMode = mode;
+}
+
+OBJECT_BEGIN2(EVRMRM, EVR)
+  OBJECT_PROP2("DCEnable", &EVRMRM::dcEnabled, &EVRMRM::dcEnable);
+  OBJECT_PROP2("DCTarget", &EVRMRM::dcTarget, &EVRMRM::dcTargetSet);
+  OBJECT_PROP1("DCRx",     &EVRMRM::dcRx);
+  OBJECT_PROP1("DCInt",    &EVRMRM::dcInternal);
+  OBJECT_PROP1("DCStatusRaw", &EVRMRM::dcStatusRaw);
+  OBJECT_PROP1("DCTOPID", &EVRMRM::topId);
+  OBJECT_PROP2("EvtCode", &EVRMRM::dummy, &EVRMRM::setEvtCode);
+  OBJECT_PROP2("TimeSrc", &EVRMRM::timeSrc, &EVRMRM::setTimeSrc);
+    {
+      std::string (EVRMRM::*getter)() const = &EVRMRM::nextSecond;
+      OBJECT_PROP1("NextSecond", getter);
+    }
+    {
+      double (EVRMRM::*getter)() const = &EVRMRM::deltaSeconds;
+      OBJECT_PROP1("Time Error", getter);
+    }
+    {
+      void (EVRMRM::*cmd)() = &EVRMRM::resyncSecond;
+      OBJECT_PROP1("Sync TS", cmd);
+    }
+OBJECT_END(EVRMRM)
+
+
 void
 EVRMRM::enableIRQ(void)
 {
@@ -957,7 +1136,8 @@ EVRMRM::enableIRQ(void)
     shadowIRQEna =  IRQ_Enable
                    |IRQ_RXErr    |IRQ_BufFull
                    |IRQ_Heartbeat
-                   |IRQ_Event    |IRQ_FIFOFull;
+                   |IRQ_Event    |IRQ_FIFOFull
+                   |IRQ_SoS      |IRQ_EoS;
 
     // IRQ PCIe enable flag should not be changed. Possible RACER here
     shadowIRQEna |= (IRQ_PCIee & (READ32(base, IRQEnable)));
@@ -1052,6 +1232,12 @@ EVRMRM::isr(EVRMRM *evr, bool pci)
 
         scanIoRequest(evr->IRQfifofull);
     }
+    if(active&IRQ_SoS && evr->seq.get()){
+        evr->seq->doStartOfSequence(0);
+    }
+    if(active&IRQ_EoS && evr->seq.get()){
+        evr->seq->doEndOfSequence(0);
+    }
     evr->count_hardware_irq++;
 
     // IRQ PCIe enable flag should not be changed. Possible RACER here
@@ -1063,12 +1249,15 @@ EVRMRM::isr(EVRMRM *evr, bool pci)
     evrMrmIsrFlagsTrashCan=READ32(evr->base, IRQFlag);
 }
 
-
 // Caller must hold evrLock
 static
 void
 eventInvoke(eventCode& event)
 {
+#ifdef HAVE_PARALLEL_CB
+    // bit mask of priorities for which scans have been queued
+    unsigned prio_queued =
+#endif
     scanIoRequest(event.occured);
 
     for(eventCode::notifiees_t::const_iterator it=event.notifiees.begin();
@@ -1076,6 +1265,17 @@ eventInvoke(eventCode& event)
         ++it)
     {
         (*it->first)(it->second, event.code);
+    }
+
+    event.waitingfor=0; // assume caller handles waitingfor>0
+    for(unsigned p=0; p<NUM_CALLBACK_PRIORITIES; p++) {
+#ifdef HAVE_PARALLEL_CB
+        // only sync priorities where work is queued
+        if((prio_queued&(1u<<p))==0) continue;
+#endif
+        event.waitingfor++;
+        event.done.priority=p;
+        callbackRequest(&event.done);
     }
 }
 
@@ -1146,19 +1346,14 @@ EVRMRM::drain_fifo()
             if (events[evt].again) {
                 // ignore extra events in buffer.
             } else if (events[evt].waitingfor>0) {
-                // already queued, but occured again before
-                // callbacks finished so disable event
+                // already queued, but received again before all
+                // callbacks finished.  Un-map event until complete
                 events[evt].again=true;
                 specialSetMap(evt, ActionFIFOSave, false);
                 count_FIFO_sw_overrate++;
             } else {
                 // needs to be queued
                 eventInvoke(events[evt]);
-                events[evt].waitingfor=NUM_CALLBACK_PRIORITIES;
-                for(int p=0; p<NUM_CALLBACK_PRIORITIES; p++) {
-                    events[evt].done.priority=p;
-                    callbackRequest(&events[evt].done);
-                }
             }
 
         }
@@ -1223,12 +1418,6 @@ try {
 }
 }
 
-
-void
-EVRMRM::drain_log(CALLBACK*)
-{
-}
-
 void
 EVRMRM::poll_link(CALLBACK* cb)
 {
@@ -1244,7 +1433,10 @@ try {
         callbackRequestDelayed(&evr->poll_link_cb, 0.1); // poll again in 100ms
         {
             SCOPED_LOCK2(evr->evrLock, guard);
+            if(evr->timestampValid && evrMrmTimeDebug>0)
+                errlogPrintf("TS invalid as link goes down\n");
             evr->timestampValid=0;
+
             evr->lastInvalidTimestamp=evr->lastValidTimestamp;
             scanIoRequest(evr->timestampValidChange);
         }
@@ -1263,6 +1455,16 @@ try {
 }
 }
 
+static
+void send_timestamp(CALLBACK *cb)
+{
+    void *raw;
+    callbackGetUser(raw, cb);
+    EVRMRM *evr=static_cast<EVRMRM*>(raw);
+
+    evr->tickSecond();
+}
+
 void
 EVRMRM::seconds_tick(void *raw, epicsUInt32)
 {
@@ -1276,38 +1478,64 @@ EVRMRM::seconds_tick(void *raw, epicsUInt32)
     bool valid=true;
 
     /* Received a known bad value */
-    if(evr->lastInvalidTimestamp==newSec)
+    if(evr->lastInvalidTimestamp==newSec) {
         valid=false;
+        if(evrMrmTimeDebug>0)
+            errlogPrintf("TS reset repeats known bad value new %08x bad %08x\n",
+                         (unsigned)newSec, (unsigned)evr->lastInvalidTimestamp);
+    }
 
     /* Received a value which is inconsistent with a previous value */
     if(evr->timestampValid>0
-       &&  evr->lastValidTimestamp!=(newSec-1) )
+       &&  evr->lastValidTimestamp!=(newSec-1) ) {
         valid=false;
+        if(evrMrmTimeDebug>0)
+            errlogPrintf("TS reset with inconsistent value new %08x\n",
+                         (unsigned)newSec);
+    }
 
     /* received the previous value again */
-    else if(evr->lastValidTimestamp==newSec)
+    else if(evr->lastValidTimestamp==newSec) {
         valid=false;
+        if(evrMrmTimeDebug>0)
+            errlogPrintf("TS reset repeats previous value new %08x last %08x\n",
+                         (unsigned)newSec, (unsigned)evr->lastValidTimestamp);
+    }
 
 
     if (!valid)
     {
         if (evr->timestampValid>0) {
-            errlogPrintf("TS reset w/ old or invalid seconds %08x (%08x %08x)\n",
-                         newSec, evr->lastValidTimestamp, evr->lastInvalidTimestamp);
+            if(evrMrmTimeDebug>0)
+                errlogPrintf("TS reset w/ old or invalid seconds %08x (%08x %08x)\n",
+                             newSec, evr->lastValidTimestamp, evr->lastInvalidTimestamp);
             scanIoRequest(evr->timestampValidChange);
         }
         evr->timestampValid=0;
         evr->lastInvalidTimestamp=newSec;
+        if(evrMrmTimeDebug>2)
+            errlogPrintf("TS reset invalid new %08x\n", (unsigned)newSec);
 
     } else {
-        evr->timestampValid++;
+        if(evr->timestampValid<=TSValidThreshold) evr->timestampValid++;
         evr->lastValidTimestamp=newSec;
 
         if (evr->timestampValid == TSValidThreshold) {
-            errlogPrintf("TS becomes valid after fault %08x\n",newSec);
+            if(evrMrmTimeDebug>0)
+                errlogPrintf("TS becomes valid after fault %08x\n",newSec);
             scanIoRequest(evr->timestampValidChange);
+
+        } else if(evrMrmTimeDebug>2) {
+            errlogPrintf("TS reset valid new %08x %u\n",
+                         (unsigned)newSec, (unsigned)evr->timestampValid);
         }
     }
 
-
+    if(evr->timeSrcMode==External) {
+        // avoid lock ordering problem with EVR lock and generalTime locks
+        callbackSetCallback(&send_timestamp, &evr->timeSrc_cb);
+        callbackSetUser(evr, &evr->timeSrc_cb);
+        callbackSetPriority(priorityMedium, &evr->timeSrc_cb);
+        callbackRequest(&evr->timeSrc_cb);
+    }
 }

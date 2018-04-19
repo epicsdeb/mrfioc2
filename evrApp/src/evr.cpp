@@ -6,7 +6,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include "mrf/version.h"
@@ -21,7 +21,6 @@
 #include "evr/input.h"
 #include "evr/prescaler.h"
 #include "evr/cml.h"
-#include "evr/util.h"
 
 /**@file evr.cpp
  *
@@ -34,6 +33,11 @@
 
 EVR::~EVR()
 {
+}
+
+std::string EVR::versionStr() const
+{
+    return version().str();
 }
 
 std::string EVR::versionSw() const
@@ -50,9 +54,17 @@ std::string EVR::position() const
 {
     std::ostringstream position;
 
-    if(busConfiguration.busType == busType_pci) position << busConfiguration.pci.bus << ":" << busConfiguration.pci.device << "." << busConfiguration.pci.function;
-    else if(busConfiguration.busType == busType_vme) position << "Slot #" << busConfiguration.vme.slot;
-    else position << "Unknown position";
+    if(busConfiguration.busType == busType_pci) {
+        position << std::hex << busConfiguration.pci.dev->bus << ":"
+                 << std::hex << busConfiguration.pci.dev->device << "."
+                 << std::hex << busConfiguration.pci.dev->function;
+        if(busConfiguration.pci.dev->slot)
+            position << " slot=" << busConfiguration.pci.dev->slot;
+    } else if(busConfiguration.busType == busType_vme) {
+        position << "Slot #" << busConfiguration.vme.slot;
+    } else {
+        position << "Unknown position";
+    }
 
     return position.str();
 }
@@ -81,22 +93,11 @@ DelayModuleEvr::~DelayModuleEvr()
 {
 }
 
-long get_ioint_info_statusChange(int dir,dbCommon* prec,IOSCANPVT* io)
-{
-    IOStatus* stat=static_cast<IOStatus*>(prec->dpvt);
-
-    if(!stat) return 1;
-
-    *io=stat->statusChange((dir != 0));
-
-    return 0;
-}
-
 OBJECT_BEGIN(EVR) {
 
     OBJECT_PROP1("Model", &EVR::model);
 
-    OBJECT_PROP1("Version", &EVR::version);
+    OBJECT_PROP1("Version", &EVR::versionStr);
     OBJECT_PROP1("Sw Version", &EVR::versionSw);
 
     OBJECT_PROP1("Position", &EVR::position);

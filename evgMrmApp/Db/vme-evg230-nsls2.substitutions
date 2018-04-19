@@ -16,8 +16,7 @@ pattern { P, OBJ, EVG, dbusBit }
 }
 
 file evgEvtClk.db {
-pattern { P, OBJ}
-{"$(SYS){$(D)-EvtClk}", "$(EVG):EvtClk"}
+{P="$(SYS){$(D)-EvtClk}", OBJ="$(EVG):EvtClk", FRF="\$(FRF=499.68)", FDIV="\$(FDIV=4)", FEVT="\$(FEVT=124.916)"}
 }
 
 file evgInput.db {
@@ -31,8 +30,7 @@ pattern { P, OBJ, , SYS, D, Num }
 }
 
 file evgMrm.db {
-pattern { P, OBJ,  EVG }
-{ "$(SYS){$(D)}", $(EVG), $(EVG) }
+{ P="$(SYS){$(D)}", SOFTEVT="$(SYS){$(D)-SoftEvt}", OBJ="$(EVG)", EVG="$(EVG)" }
 }
 
 file evgMxc.db {
@@ -55,12 +53,7 @@ pattern { P, OBJ }
 { "$(SYS){$(D)-Out:Front3}", "$(EVG):FrontOut3" }
 }
 
-file evgSoftEvt.db {
-pattern { P, OBJ }
-{ "$(SYS){$(D)-SoftEvt}", "$(EVG):SoftEvt" }
-}
-
-file evgSoftSeq.db {
+file mrmSoftSeq.template {
 pattern { P, EVG, seqNum, NELM, ASGUSER }
 { "$(SYS){$(D)-SoftSeq:0}",  $(EVG), 0, 2047, "OPERATOR" }
 { "$(SYS){$(D)-SoftSeq:1}", $(EVG), 1, 2047, "OPERATOR" }
@@ -69,6 +62,17 @@ pattern { P, EVG, seqNum, NELM, ASGUSER }
 pattern { P, EVG, seqNum, NELM, ENALNK }
 { "$(SYS){$(D)-SoftSeq:Inj}",  $(EVG), 4, 2047, "$(SYS){$(D)-SSC}Inject:B-Calc_" }
 { "$(SYS){$(D)-SoftSeq:InjN}",  $(EVG), 5, 2047, "$(SYS){$(D)-SSC}Inject:N-Calc_" }
+}
+
+file evgSoftSeq.template {
+pattern { P, EVG, seqNum, NELM }
+{ "$(SYS){$(D)-SoftSeq:0}", $(EVG), 0, 2047 }
+{ "$(SYS){$(D)-SoftSeq:1}", $(EVG), 1, 2047 }
+{ "$(SYS){$(D)-SoftSeq:2}", $(EVG), 2, 2047 }
+{ "$(SYS){$(D)-SoftSeq:3}", $(EVG), 3, 2047 }
+pattern { P, EVG, seqNum, NELM }
+{ "$(SYS){$(D)-SoftSeq:Inj}",  $(EVG), 4, 2047 }
+{ "$(SYS){$(D)-SoftSeq:InjN}",  $(EVG), 5, 2047 }
 }
 
 file nsls2-inj-ssc.db {

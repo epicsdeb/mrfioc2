@@ -46,6 +46,26 @@
 #ifndef MRF_COMMON_H
 #define MRF_COMMON_H
 
+#ifdef __cplusplus
+#include <ostream>
+#include <sstream>
+#include <string>
+#include <memory>
+
+// ugly hack to avoid copious deprecation warnings when building c++11
+namespace mrf {
+#if __cplusplus>=201103L
+template<typename T>
+using auto_ptr = std::unique_ptr<T>;
+#define PTRMOVE(AUTO) std::move(AUTO)
+#else
+using std::auto_ptr;
+#define PTRMOVE(AUTO) (AUTO)
+#endif
+}
+
+#endif
+
 /**************************************************************************************************/
 /*  Include Header Files from the Common Utilities                                                */
 /**************************************************************************************************/
@@ -55,6 +75,8 @@
 #include  <epicsTime.h>         /* EPICS Time definitions                                         */
 #include  <epicsMath.h>         /* EPICS Common math functions & definitions                      */
 #include  <epicsInterrupt.h>
+#include  <epicsStdlib.h>
+#include  <epicsThread.h>
 
 #include  <alarm.h>             /* EPICS Alarm status and severity definitions                    */
 #include  <dbAccess.h>          /* EPICS Database Access definitions                              */
@@ -102,6 +124,10 @@
 #define MRF_EVENT_END_OF_SEQUENCE  0x7F
 
 
+/** @brief Priority given to EVR's timestamp/event provider
+ */
+#define ER_PROVIDER_PRIORITY 50
+
 /**************************************************************************************************/
 /*  MRF Supported Bus Types                                                                       */
 /**************************************************************************************************/
@@ -148,6 +174,31 @@
 
 #ifdef __cplusplus
 
+/* C++11 keywords
+ @code
+ struct Base {
+   virtual void foo();
+ };
+ struct Class : public Base {
+   virtual void foo() OVERRIDE FINAL;
+ };
+ @endcode
+ */
+#ifndef FINAL
+#  if __cplusplus>=201103L
+#    define FINAL final
+#  else
+#    define FINAL
+#  endif
+#endif
+#ifndef OVERRIDE
+#  if __cplusplus>=201103L
+#    define OVERRIDE override
+#  else
+#    define OVERRIDE
+#  endif
+#endif
+
 template<class Mutex>
 class scopedLock
 {
@@ -179,6 +230,76 @@ public:
     { epicsInterruptUnlock(key); }
 };
 
+
+// inline string builder
+//  std::string X(SB()<<"test "<<4);
+struct SB {
+    std::ostringstream strm;
+    SB() {}
+    operator std::string() const { return strm.str(); }
+    template<typename T>
+    SB& operator<<(T i) { strm<<i; return *this; }
+};
+
+/* MRF firmware version numbers have become interesting.
+ *
+ * Storage is 0x__CCAABB
+ *   AA - Firmware ID
+ *   BB - Revision ID
+ *   CC - Subrelease ID
+ *
+ * To quote the manual:
+ *   Subrelease ID For production releases the subrelease ID counts up from 00.
+ *   For pre-releases this ID is used “backwards” counting down from ff i.e. when
+ *   approacing release 12000207, we have prereleases 12FF0206, 12FE0206,
+ *   12FD0206 etc. in this order.
+ */
+class MRFVersion
+{
+    const epicsUInt16 m_major;
+    const epicsInt8 m_minor;
+public:
+
+    explicit MRFVersion(epicsUInt32 regval)
+        :m_major(regval&0xffff) ,m_minor((regval>>16)&0xff)
+    {}
+    inline MRFVersion(unsigned fw, unsigned rev, unsigned sub=0)
+        :m_major((fw<<8)|rev), m_minor(sub)
+    {}
+
+    inline unsigned firmware() const { return m_major>>8; }
+    inline unsigned revision() const { return m_major&0xff; }
+    inline int subrelease() const { return m_minor; }
+
+    int compare(const MRFVersion& o) const;
+    inline bool operator>(const MRFVersion& o) const { return compare(o)==1; }
+    inline bool operator<(const MRFVersion& o) const { return compare(o)==-1; }
+    inline bool operator==(const MRFVersion& o) const { return compare(o)==0; }
+    inline bool operator>=(const MRFVersion& o) const { return compare(o)!=-1; }
+    inline bool operator<=(const MRFVersion& o) const { return compare(o)!=1; }
+
+    std::string str() const;
+};
+
+std::ostream& operator<<(std::ostream& strm, const MRFVersion& ver);
+
+
+//! @brief Helper to allow one class to have several runable methods
+template<class C,void (C::*Method)()>
+class epicsShareClass epicsThreadRunableMethod : public epicsThreadRunable
+{
+    C& owner;
+public:
+    explicit epicsThreadRunableMethod(C& o)
+        :owner(o)
+    {}
+    virtual ~epicsThreadRunableMethod(){}
+    virtual void run()
+    {
+        (owner.*Method)();
+    }
+};
+
 #endif /* __cplusplus */
 
 /**************************************************************************************************/
@@ -192,27 +313,6 @@ public:
 #ifndef VERSION_INT
 #  define VERSION_INT(V,R,M,P) ( ((V)<<24) | ((R)<<16) | ((M)<<8) | (P))
 #  define EPICS_VERSION_INT  VERSION_INT(EPICS_VERSION, EPICS_REVISION, EPICS_MODIFICATION, EPICS_PATCH_LEVEL)
-#endif
-
-/*---------------------
- * Older versions (< 3.14.9) of recGblRecordError took a non-const string
- */
-#if EPICS_VERSION_INT < VERSION_INT(3,14,9,0)
-#  define recGblRecordError(ERR, REC, STR) recGblRecordError(ERR, REC, (char*)(STR))
-#endif
-
-/*---------------------
- * Older versions (< 3.14.10) do not define POSIX_TIME
- */
-#ifndef POSIX_TIME_AT_EPICS_EPOCH
-#  define POSIX_TIME_AT_EPICS_EPOCH 631152000u
-#endif
-
-/*---------------------
- * Older versions (< 3.14.10) use DBE_LOG instead of DBE_ARCHIVE
- */
-#ifndef DBE_ARCHIVE
-#  define DBE_ARCHIVE DBE_LOG
 #endif
 
 /*---------------------
@@ -266,6 +366,24 @@ epicsShareFunc char *allocSNPrintf(size_t N, const char *fmt, ...) EPICS_PRINTF_
 #  endif
 
 #endif /*EPICS 64-bit integer types need defining*/
+
+#define M_stdlib        (527 <<16) /*EPICS Standard library*/
+
+#define S_stdlib_noConversion (M_stdlib | 1) /* No digits to convert */
+#define S_stdlib_extraneous   (M_stdlib | 2) /* Extraneous characters */
+#define S_stdlib_underflow    (M_stdlib | 3) /* Too small to represent */
+#define S_stdlib_overflow     (M_stdlib | 4) /* Too large to represent */
+#define S_stdlib_badBase      (M_stdlib | 5) /* Number base not supported */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+epicsShareFunc int
+epicsParseUInt32(const char *str, epicsUInt32 *to, int base, char **units);
+#ifdef __cplusplus
+}
+#endif
+
 #endif
 
 

@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <biRecord.h>
@@ -20,20 +20,18 @@ using namespace mrf;
 template<typename T>
 static long read_bi_from_integer(biRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<T> *priv=(addr<T>*)prec->dpvt;
 
     {
         scopedLock<mrf::Object> g(*priv->O);
         prec->rval = priv->P->get();
+        if(prec->mask) prec->rval &= prec->mask;
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 // bi uint32
@@ -69,7 +67,7 @@ OBJECT_DSET(BIFromBool,
 template<typename I>
 static long write_bo_from_integer(boRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<I> *priv=(addr<I>*)prec->dpvt;
 
@@ -91,10 +89,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 

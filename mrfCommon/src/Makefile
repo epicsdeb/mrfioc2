@@ -6,7 +6,7 @@ USR_CPPFLAGS += -DDEBUG_PRINT
 
 export PERL5LIB=$(EPICS_BASE)/lib/perl
 
-MRF_VERSION = 2.1.0
+MRF_VERSION = 2.2.0
 
 #---------------------
 # Install include files
@@ -25,28 +25,25 @@ INC += mrf/version.h
 
 INC += devObj.h
 
+INC += configurationInfo.h
+INC += plx9030.h
+INC += plx9056.h
+INC += latticeEC30.h
 
 TESTPROD_HOST += objectTest
 objectTest_SRCS += objectTest.c
 objectTest_LIBS += mrfCommon $(EPICS_BASE_IOC_LIBS)
 TESTS += objectTest
 
-ifeq ($(EPICS_VERSION)$(EPICS_REVISION),314)
-ifeq ($(findstring $(EPICS_MODIFICATION),1 2 3 4 5 6 7 8 9),)
-
-# Test framework added in 3.14.10
 TESTPROD_HOST += linkoptionsTest
 linkoptionsTest_SRCS += linkoptionsTest.c
 linkoptionsTest_LIBS += mrfCommon
 TESTS += linkoptionsTest
 
-else
-
-# Added to Base in 3.14.10
-DBDINC += aSubRecord
-mrfCommon_SRCS += aSubRecord.c
-endif
-endif
+TESTPROD_HOST += flashtest
+flashtest_SRCS += flashtest.cpp
+flashtest_LIBS += mrfCommon
+TESTS += flashtest
 
 #---------------------
 # Install DBD files
@@ -60,16 +57,22 @@ LIBRARY_IOC += mrfCommon
 mrfCommon_SRCS += mrfFracSynth.c
 mrfCommon_SRCS += linkoptions.c
 mrfCommon_SRCS += object.cpp
+mrfCommon_SRCS += devObj.cpp
 mrfCommon_SRCS += devObjAnalog.cpp
 mrfCommon_SRCS += devObjLong.cpp
 mrfCommon_SRCS += devObjBinary.cpp
 mrfCommon_SRCS += devObjMBB.cpp
 mrfCommon_SRCS += devObjMBBDirect.cpp
 mrfCommon_SRCS += devObjString.cpp
+mrfCommon_SRCS += devObjCommand.cpp
 mrfCommon_SRCS += devObjWf.cpp
 mrfCommon_SRCS += devMbboDirectSoft.c
+mrfCommon_SRCS += devlutstring.cpp
 mrfCommon_SRCS += databuf.cpp
 mrfCommon_SRCS += mrfCommon.cpp
+mrfCommon_SRCS += spi.cpp
+mrfCommon_SRCS += flash.cpp
+mrfCommon_SRCS += flashiocsh.cpp
 
 mrfCommon_LIBS += $(EPICS_BASE_IOC_LIBS)
 
@@ -87,6 +90,8 @@ FracSynthAnalyze_SRCS += FracSynthAnalyze.c
 FracSynthControlWord_SRCS += FracSynthControlWord.c
 
 PROD_LIBS += mrfCommon $(EPICS_BASE_IOC_LIBS)
+
+TESTSCRIPTS_HOST += $(TESTS:%=%.t)
 
 #---------------------
 # Generic EPICS build rules

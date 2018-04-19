@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <aiRecord.h>
@@ -25,7 +25,7 @@ using namespace mrf;
 template<typename T>
 static long read_ai_from_real(aiRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<T> *priv=(addr<T>*)prec->dpvt;
 
@@ -46,10 +46,7 @@ try {
 
     prec->udf = 0;
     return 2;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 // ai double
@@ -64,7 +61,7 @@ OBJECT_DSET(AIFromDouble,
 template<typename T>
 static long read_ai_from_integer(aiRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<T> *priv=(addr<T>*)prec->dpvt;
 
@@ -105,7 +102,7 @@ OBJECT_DSET(AIFromUINT16,
 template<typename T>
 static long write_ao_from_real(aoRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<T> *priv=(addr<T>*)prec->dpvt;
 
@@ -142,10 +139,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 // ao double
@@ -160,7 +154,7 @@ OBJECT_DSET(AOFromDouble,
 template<typename T>
 static long write_ao_from_integer(aoRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<T> *priv=(addr<T>*)prec->dpvt;
 
@@ -172,10 +166,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 // ao uint32

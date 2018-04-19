@@ -3,6 +3,8 @@ include $(TOP)/configure/CONFIG
 #----------------------------------------
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
 
+USR_DBFLAGS += -I$(TOP)/mrmShared/Db
+
 #----------------------------------------------------
 #  Optimization of db files using dbst (DEFAULT: NO)
 #DB_OPT = YES
@@ -12,14 +14,14 @@ DB += nsls2-inj-seqs.db
 #----------------------------------------------------
 # Create and install (or just install) into <top>/db
 # databases, templates, substitutions like this
-#DB += xxx.db
+
 DB += evgMrm.db
 DB += evgEvtClk.db
-DB += evgSoftEvt.db
 DB += evgUserEvt.db
 DB += evgTrigEvt.db
 DB += evgMxc.db
 DB += evgDbus.db
+DB += evgAcTrig.db
 DB += evgInput.db
 DB += evgOutput.db
 DB += evgSoftSeq.db
@@ -29,11 +31,10 @@ DB += vme-evg230-nsls2.db
 
 ifneq ($(DEVIOCSTATS),)
 ifeq ($(OS_CLASS), RTEMS)
-DB_INSTALLS += $(EPICS_BASE)/db/iocAdminRTEMS.db
+DB_INSTALLS += $(DEVIOCSTATS)/db/iocAdminRTEMS.db
 endif
 endif
 
-# Omitted before 3.14.10
 USR_DBFLAGS += -I . -I .. -I $(INSTALL_LOCATION)/db
 
 #----------------------------------------------------

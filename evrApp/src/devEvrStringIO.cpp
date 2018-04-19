@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <stdlib.h>
@@ -51,7 +51,7 @@ long stringin_add(dbCommon *praw)
     long ret=0;
 try {
     assert(prec->inp.type==INST_IO);
-    std::auto_ptr<ts_priv> priv(new ts_priv);
+    mrf::auto_ptr<ts_priv> priv(new ts_priv);
     priv->code=0;
     priv->last_bad=0;
 
@@ -133,7 +133,8 @@ common_dset devSIEVR = {
     dset_cast(&init_dset<&dxtSIEVR>),
     (DEVSUPFUN) init_record_empty,
     NULL,
-    (DEVSUPFUN) read_si
+    (DEVSUPFUN) read_si,
+    NULL
 };
 epicsExportAddress(dset,devSIEVR);
 

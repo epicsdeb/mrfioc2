@@ -6,7 +6,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef EVRREGMAP_H
@@ -54,8 +54,9 @@
 
 #  define Control_evtfwd  0x40000000
 
-/* Loopback 0 - normal, 1 - connects local tx to local rx */
+/* 0 - normal, 1 loop back in logic */
 #  define Control_txloop  0x20000000
+/* 0 - normal, 1 loop back in SFP */
 #  define Control_rxloop  0x10000000
 
 #  define Control_outena  0x08000000 /* cPCI-EVRTG-300 only */
@@ -65,6 +66,8 @@
 #  define Control_endian  0x02000000 /* 0 - MSB, 1 - LSB, 300 PCI devices only */
 
 #  define Control_GTXio   0x01000000 /* GTX use external inhibit */
+
+#  define Control_DCEna   0x00400000
 
 /*                        Timestamp clock on DBUS #4 */
 #  define Control_tsdbus  0x00004000
@@ -82,6 +85,8 @@
 #  define Control_fiforst 0x00000008
 
 #define U32_IRQFlag     0x008
+#  define IRQ_EoS       0x1000
+#  define IRQ_SoS       0x0100
 #  define IRQ_LinkChg   0x40
 #  define IRQ_BufFull   0x20
 #  define IRQ_HWMapped  0x10
@@ -96,6 +101,16 @@
 #  define IRQ_PCIee     0x40000000
 
 #define U32_IRQPulseMap 0x010
+
+//=====================
+// Software Event Control Registers
+//
+#define  U32_SwEvent            0x0018
+
+#define  SwEvent_Ena            0x00000100
+#define  SwEvent_Pend           0x00000200
+#define  SwEvent_Code_MASK      0x000000ff
+#define  SwEvent_Code_SHIFT     0
 
 // With Linux this bit should used by the kernel driver exclusively
 #define U32_PCI_MIE             0x001C
@@ -123,9 +138,8 @@
 #  define FWVersion_type_shift 28
 #  define FWVersion_form_mask 0x0f000000
 #  define FWVersion_form_shift 24
-#  define FWVersion_ver_mask  0x000000ff
+#  define FWVersion_ver_mask  0x0000ffff
 #  define FWVersion_ver_shift  0
-#  define FWVersion_zero_mask 0x00ffff00
 
 #define U32_CounterPS   0x040 /* Timestamp event counter prescaler */
 
@@ -157,6 +171,24 @@
 
 #define U32_SPIDData    0x0A0
 #define U32_SPIDCtrl    0x0A4
+#define  SPIDCtrl_Overrun 0x80
+#define  SPIDCtrl_RecvRdy 0x40
+#define  SPIDCtrl_SendRdy 0x20
+#define  SPIDCtrl_SendEpt 0x10
+#define  SPIDCtrl_TxOver  0x08
+#define  SPIDCtrl_RxOver  0x04
+#define  SPIDCtrl_OE      0x02
+#define  SPIDCtrl_SS      0x01
+
+#define U32_DCTarget    0x0b0
+#define U32_DCRxVal     0x0b4
+#define U32_DCIntVal    0x0b8
+#define U32_DCStatus    0x0bc
+#define U32_TOPID       0x0c0
+
+#define  U32_SeqControl_base    0x00e0
+#define  U32_SeqControl(n)      (U32_SeqControl_base + (4*n))
+
 
 #define U32_ScalerN     0x100
 #  define ScalerMax 3
@@ -169,8 +201,12 @@
 #define U32_PulserNWdth 0x20c
 #  define PulserMax 10
 
-/* 0 <= N <= 9 */
+/* 0 <= N <= 15 */
 #define U32_PulserCtrl(N) (U32_PulserNCtrl + (16*(N)))
+#  define PulserCtrl_masks 0xff0000
+#  define PulserCtrl_masks_shift 16
+#  define PulserCtrl_enables 0xff00
+#  define PulserCtrl_enables_shift 8
 #  define PulserCtrl_ena  0x01
 #  define PulserCtrl_mtrg 0x02
 #  define PulserCtrl_mset 0x04
@@ -215,6 +251,13 @@
 
 /* 0 <= N <= 31 */
 #define U32_OutputMapRB(N) (U32_OutputMapRBN + (2*( (N) & (~0x1) )))
+
+/* Backplane line outputs */
+#define U32_OutputMapBackplaneN 0x4C0
+#  define OutputMapBackplaneMax 8
+
+/* 0 <= N <= 7 */
+#define U32_OutputMapBackplane(N) (U32_OutputMapBackplaneN + (2*( (N) & (~0x1) )))
 
 /* Front panel inputs */
 #define U32_InputMapFPN  0x500
@@ -321,6 +364,10 @@
 #define ActionLogSave  122
 #define ActionHeartBeat 101
 #define ActionPSRst    100
+
+// Sequence Ram Timestamp Array Base Offset
+#define  U32_SeqRamTS_base      0xc000
+#define  U32_SeqRamTS(n,m)      (U32_SeqRamTS_base + (0x4000*(n)) + (8*(m)))
 
 #define U32_SFPEEPROM_base 0x8200
 #define U32_SFPEEPROM(N) (U32_SFPEEPROM_base + (N))
