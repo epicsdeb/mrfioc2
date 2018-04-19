@@ -1,16 +1,16 @@
 Source: mrfioc2
 Section: devel
 Priority: extra
-Maintainer: Michael Davidsaver <mdavidsaver@gmail.com>
+Maintainer: Martin Konrad <konrad@frib.msu.edu>
 Build-Depends: debhelper (>= 9), epics-debhelper (>= 6~),
                epics-dev (>= 3.14.11-2),
                epics-msi,
-               rtems-devlib2-mvme2100,
-               rtems-devlib2-mvme2307,
-               rtems-devlib2-mvme3100,
-               rtems-devlib2-mvme5500,
+               rtems-devlib2-mvme2100 (>=2.8),
+               rtems-devlib2-mvme2307 (>=2.8),
+               rtems-devlib2-mvme3100 (>=2.8),
+               rtems-devlib2-mvme5500 (>=2.8),
                dkms,
-XS-Rtems-Build-Depends: rtems-epics, rtems-devlib2
+XS-Rtems-Build-Depends: rtems-epics, rtems-devlib2 (>=2.8)
 X-Epics-Targets: .*
 Standards-Version: 3.8.0
 Homepage: http://epics.sf.net/mrfioc2
