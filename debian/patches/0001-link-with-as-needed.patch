@@ -7,12 +7,12 @@ Subject: link with --as-needed
  1 file changed, 2 insertions(+)
 
 diff --git a/configure/CONFIG_SITE b/configure/CONFIG_SITE
-index 0c9da2e..9352c76 100644
+index 5ee9934..759779b 100644
 --- a/configure/CONFIG_SITE
 +++ b/configure/CONFIG_SITE
-@@ -25,3 +25,5 @@
- #INSTALL_LOCATION=<fullpathname>
+@@ -34,3 +34,5 @@ USR_CPPFLAGS += -DUSE_TYPED_RSET
  
+ # Set to YES to link executable (mostly) statically
  #STATIC_BUILD=NO
 +
 +USR_LDFLAGS += -Wl,--as-needed
