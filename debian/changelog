@@ -1,3 +1,10 @@
+mrfioc2 (2.2.0-1) unstable; urgency=medium
+
+  * New upstream version 2.2.0
+  * Update dependencies and maintainer
+
+ -- Martin Konrad <konrad@frib.msu.edu>  Thu, 19 Apr 2018 17:53:49 -0400
+
 mrfioc2 (2.1.0-2) unstable; urgency=medium
 
   * Patch to remove verbose kernel module prints
