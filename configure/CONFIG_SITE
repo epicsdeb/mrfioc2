@@ -34,3 +34,5 @@ USR_CPPFLAGS += -DUSE_TYPED_RSET
 
 # Set to YES to link executable (mostly) statically
 #STATIC_BUILD=NO
+
+USR_LDFLAGS += -Wl,--as-needed
