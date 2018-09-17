@@ -2,13 +2,13 @@ Source: mrfioc2
 Section: devel
 Priority: extra
 Maintainer: Martin Konrad <konrad@frib.msu.edu>
-Build-Depends: debhelper (>= 9), epics-debhelper (>= 6~),
-               epics-dev (>= 3.14.11-2),
+Build-Depends: debhelper (>= 9.20141010), dpkg-dev (>= 1.17.14),
+               epics-debhelper (>= 6~), epics-dev (>= 3.14.11-2),
                epics-msi,
-               rtems-devlib2-mvme2100 (>=2.8),
-               rtems-devlib2-mvme2307 (>=2.8),
-               rtems-devlib2-mvme3100 (>=2.8),
-               rtems-devlib2-mvme5500 (>=2.8),
+               rtems-devlib2-mvme2100 (>=2.8) <pkg.epics-base.rtems>,
+               rtems-devlib2-mvme2307 (>=2.8) <pkg.epics-base.rtems>,
+               rtems-devlib2-mvme3100 (>=2.8) <pkg.epics-base.rtems>,
+               rtems-devlib2-mvme5500 (>=2.8) <pkg.epics-base.rtems>,
                dkms,
 XS-Rtems-Build-Depends: rtems-epics, rtems-devlib2 (>=2.8)
 X-Epics-Targets: .*
@@ -49,6 +49,7 @@ Description: EPICS Driver for MRF timing cards
  MRF cards.
 
 Package: rtems-mrfioc2-mvme2100
+Build-Profiles: <pkg.epics-base.rtems>
 Architecture: all
 Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
          epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
@@ -59,6 +60,7 @@ Description: EPICS Driver for MRF timing cards
  This package contains support for the MVME2100 PowerPC based VME SBC.
 
 Package: rtems-mrfioc2-mvme2307
+Build-Profiles: <pkg.epics-base.rtems>
 Architecture: all
 Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
          epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
@@ -69,6 +71,7 @@ Description: EPICS Driver for MRF timing cards
  This package contains support for the MVME2307 PowerPC based VME SBC.
 
 Package: rtems-mrfioc2-mvme3100
+Build-Profiles: <pkg.epics-base.rtems>
 Architecture: all
 Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
          epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
@@ -79,6 +82,7 @@ Description: EPICS Driver for MRF timing cards
  This package contains support for the MVME3100 PowerPC based VME SBC.
 
 Package: rtems-mrfioc2-mvme5500
+Build-Profiles: <pkg.epics-base.rtems>
 Architecture: all
 Depends: ${rtems:Depends}, epics-mrfioc2-dev (>= ${binary:Version}),
          epics-mrfioc2-dev (<< ${binary:Version}.1~), ${misc:Depends},
