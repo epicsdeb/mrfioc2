@@ -1,0 +1,8 @@
+mrfioc2 source: invalid-restriction-formula-in-build-profiles-field <pkg.epics-base.rtems> rtems-mrfioc2-mvme2100
+mrfioc2 source: invalid-restriction-formula-in-build-profiles-field <pkg.epics-base.rtems> rtems-mrfioc2-mvme2307
+mrfioc2 source: invalid-restriction-formula-in-build-profiles-field <pkg.epics-base.rtems> rtems-mrfioc2-mvme3100
+mrfioc2 source: invalid-restriction-formula-in-build-profiles-field <pkg.epics-base.rtems> rtems-mrfioc2-mvme5500
+mrfioc2 source: invalid-profile-name-in-source-relation pkg.epics-base.rtems [build-depends: rtems-devlib2-mvme2100 (>= 2.8) <pkg.epics-base.rtems>]
+mrfioc2 source: invalid-profile-name-in-source-relation pkg.epics-base.rtems [build-depends: rtems-devlib2-mvme2307 (>= 2.8) <pkg.epics-base.rtems>]
+mrfioc2 source: invalid-profile-name-in-source-relation pkg.epics-base.rtems [build-depends: rtems-devlib2-mvme3100 (>= 2.8) <pkg.epics-base.rtems>]
+mrfioc2 source: invalid-profile-name-in-source-relation pkg.epics-base.rtems [build-depends: rtems-devlib2-mvme5500 (>= 2.8) <pkg.epics-base.rtems>]
