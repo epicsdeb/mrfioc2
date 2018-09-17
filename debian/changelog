@@ -1,3 +1,9 @@
+mrfioc2 (2.2.0-2) unstable; urgency=medium
+
+  * Use build profile to enable RTEMS cross build
+
+ -- Martin Konrad <konrad@frib.msu.edu>  Mon, 17 Sep 2018 13:12:59 -0400
+
 mrfioc2 (2.2.0-1) unstable; urgency=medium
 
   * New upstream version 2.2.0
