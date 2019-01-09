@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <mbbiDirectRecord.h>
@@ -20,7 +20,7 @@ using namespace mrf;
 template<typename T>
 static long read_mbbidir_from_integer(mbbiDirectRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<T> *priv=(addr<T>*)prec->dpvt;
 
@@ -30,10 +30,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 // mbbidir uint32
@@ -60,7 +57,7 @@ OBJECT_DSET(MBBIDirFromUINT16,
 template<typename I>
 static long write_mbbodir_from_integer(mbboDirectRecord* prec)
 {
-if (!prec->dpvt) return -1;
+if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
     addr<I> *priv=(addr<I>*)prec->dpvt;
 
@@ -72,10 +69,7 @@ try {
     }
 
     return 0;
-} catch(std::exception& e) {
-    epicsPrintf("%s: read error: %s\n", prec->name, e.what());
-    return S_db_noMemory;
-}
+}CATCH(S_dev_badArgument)
 }
 
 

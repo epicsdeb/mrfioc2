@@ -6,7 +6,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <cstdio>
@@ -59,20 +59,31 @@
 static epicsUInt8 vme_level_mask = 0;
 
 static const epicsPCIID mrmevrs[] = {
+    /* PMC-EVR-230 */
     DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_PLX_9030,    PCI_VENDOR_ID_PLX,
                                PCI_DEVICE_ID_MRF_PMCEVR_230, PCI_VENDOR_ID_MRF)
+    /* PXI-EVR-230 */
     ,DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_PLX_9030,    PCI_VENDOR_ID_PLX,
                                 PCI_DEVICE_ID_MRF_PXIEVR_230, PCI_VENDOR_ID_MRF)
+    /* cPCI-EVRTG-300 */
     ,DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_PLX_9056,    PCI_VENDOR_ID_PLX,
                                 PCI_DEVICE_ID_MRF_EVRTG_300, PCI_VENDOR_ID_MRF)
+    /* cPCI-EVRTG-300E ?? PCIe-EVR-300 */
     ,DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_EC_30,    PCI_VENDOR_ID_LATTICE,
                                 PCI_DEVICE_ID_MRF_EVRTG_300E, PCI_VENDOR_ID_MRF)
+    /* cPCI-EVR-300 */
     ,DEVPCI_DEVICE_VENDOR(PCI_DEVICE_ID_MRF_CPCIEVR300,    PCI_VENDOR_ID_MRF)
+    /* mTCA-EVR-300 */
+    ,DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_XILINX_DEV,    PCI_VENDOR_ID_XILINX,
+                               PCI_DEVICE_ID_MRF_EVRMTCA300, PCI_VENDOR_ID_MRF)
+    /* PCIe-EVR-300DC */
+    ,DEVPCI_SUBDEVICE_SUBVENDOR(PCI_DEVICE_ID_XILINX_DEV,    PCI_VENDOR_ID_XILINX,
+                               PCI_SUBDEVICE_ID_PCIE_EVR_300, PCI_VENDOR_ID_MRF)
     ,DEVPCI_END
 };
 
 static const struct VMECSRID vmeevrs[] = {
-    // VME EVR RF 230
+    // VME-EVR-230 and VME-EVRRF-230
     {MRF_VME_IEEE_OUI, MRF_VME_EVR_RF_BID|MRF_SERIES_230, VMECSRANY}
     ,VMECSR_END
 };
@@ -84,6 +95,7 @@ static const EVRMRM::Config cpci_evr_230 = {
     0,  // FP outputs
     4,  // FPUV outputs
     0,  // RB outputs
+    0,  // Backplane outputs
     2,  // FP Delay outputs
     0,  // CML/GTX outputs
     MRMCML::typeCML,
@@ -97,6 +109,7 @@ static const EVRMRM::Config pmc_evr_230 = {
     3,  // FP outputs
     0,  // FPUV outputs
     10, // RB outputs
+    0,  // Backplane outputs
     0,  // FP Delay outputs
     0,  // CML/GTX outputs
     MRMCML::typeCML,
@@ -110,6 +123,7 @@ static const EVRMRM::Config pcie_evr_230 = {
     0,  // FP outputs
     16, // FPUV outputs
     0,  // RB outputs
+    0,  // Backplane outputs
     0,  // FP Delay outputs
     0,  // CML/GTX outputs
     MRMCML::typeCML,
@@ -123,6 +137,7 @@ static const EVRMRM::Config vme_evrrf_230 = { // no way to distinguish RF and no
     8,  // FP outputs
     4,  // FPUV outputs
     16, // RB outputs
+    0,  // Backplane outputs
     2,  // FP Delay outputs
     3,  // CML/GTX outputs
     MRMCML::typeCML,
@@ -136,6 +151,7 @@ static const EVRMRM::Config cpci_evrtg_300 = {
     0,  // FP outputs
     4,  // FPUV outputs
     0,  // RB outputs
+    0,  // Backplane outputs
     0,  // FP Delay outputs
     4,  // CML/GTX outputs
     MRMCML::typeTG300,
@@ -149,8 +165,37 @@ static const EVRMRM::Config cpci_evr_300 = {
     0,  // FP outputs
     12, // FPUV outputs
     0,  // RB outputs
+    0,  // Backplane outputs
     0,  // FP Delay outputs
     4,  // CML/GTX outputs
+    MRMCML::typeTG300,
+    2,  // FP inputs
+};
+
+static const EVRMRM::Config mtca_evr_300 = {
+    "mTCA-EVR-300",
+    16, // pulse generators
+    8,  // prescalers
+    4,  // FP outputs
+    0,  // FPUV outputs (really 2, handled specially)
+    16, // RB outputs  (via external IFB)
+    8,  // Backplane outputs
+    0,  // FP Delay outputs
+    0,  // CML/GTX outputs
+    MRMCML::typeTG300,
+    2,  // FP inputs
+};
+
+static const EVRMRM::Config pcie_evr_300 = {
+    "PCIe-EVR-300DC",
+    16, // pulse generators
+    8,  // prescalers
+    0,  // FP outputs
+    16,  // FPUV outputs  (via external IFB)
+    0, // RB outputs
+    0,  // Backplane outputs
+    0,  // FP Delay outputs
+    0,  // CML/GTX outputs
     MRMCML::typeTG300,
     2,  // FP inputs
 };
@@ -162,6 +207,7 @@ static const EVRMRM::Config cpci_evr_unknown = {
     1,  // FP outputs
     2,  // FPUV outputs
     1,  // RB outputs
+    1,  // Backplane outputs
     1,  // FP Delay outputs
     1,  // CML/GTX outputs
     MRMCML::typeCML,
@@ -259,7 +305,7 @@ bool reportCard(mrf::Object* obj, void* raw)
         return true;
 
     printf("EVR: %s\n",obj->name().c_str());
-    printf("\tFPGA Version: %08x (firmware: %x)\n", evr->fpgaFirmware(), evr->version());
+    printf("\tFPGA Version: %08x (firmware: %s)\n", evr->fpgaFirmware(), evr->versionStr().c_str());
     printf("\tForm factor: %s\n", evr->formFactorStr().c_str());
     printf("\tClock: %.6f MHz\n",evr->clock()*1e-6);
 
@@ -290,17 +336,13 @@ bool reportCard(mrf::Object* obj, void* raw)
         }
     }
     else if(bus->busType == busType_pci){
-        const epicsPCIDevice *pciDev;
-        if(!devPCIFindBDF(mrmevrs, bus->pci.bus, bus->pci.device, bus->pci.function, &pciDev, 0)){
-            printf("\tPCI configured bus: 0x%08x\n", bus->pci.bus);
-            printf("\tPCI configured device: 0x%08x\n", bus->pci.device);
-            printf("\tPCI configured function: 0x%08x\n", bus->pci.function);
-            printf("\tPCI IRQ: %u\n", pciDev->irq);
-            if(*level>1) printf("\tPCI class: 0x%08x, revision: 0x%x, sub device: 0x%x, sub vendor: 0x%x\n", pciDev->id.pci_class, pciDev->id.revision, pciDev->id.sub_device, pciDev->id.sub_vendor);
+        const epicsPCIDevice *pciDev = bus->pci.dev;
+        printf("\tPCI configured bus: 0x%08x\n", pciDev->bus);
+        printf("\tPCI configured device: 0x%08x\n", pciDev->device);
+        printf("\tPCI configured function: 0x%08x\n", pciDev->function);
+        printf("\tPCI in slot: %s\n", pciDev->slot ? pciDev->slot : "<N/A>");
+        printf("\tPCI IRQ: %u\n", pciDev->irq);
 
-        }else{
-            printf("\tPCI Device not found\n");
-        }
     }else{
         printf("\tUnknown bus type\n");
     }
@@ -327,20 +369,17 @@ long mrmEvrReport(int level)
 static
 void checkVersion(volatile epicsUInt8 *base, unsigned int required, unsigned int recommended)
 {
-    epicsUInt32 v = READ32(base, FWVersion),evr,ver;
+    epicsUInt32 v = READ32(base, FWVersion);
 
-    errlogPrintf("FWVersion 0x%08x\n", v);
-    if(v&FWVersion_zero_mask)
-        throw std::runtime_error("Invalid firmware version (HW or bus error)");
+    printf("FWVersion 0x%08x\n", v);
 
-    evr=v&FWVersion_type_mask;
+    epicsUInt32 evr=v&FWVersion_type_mask;
     evr>>=FWVersion_type_shift;
 
     if(evr!=0x1)
         throw std::runtime_error("Firmware does not correspond to an EVR");
 
-    ver=v&FWVersion_ver_mask;
-    ver>>=FWVersion_ver_shift;
+    epicsUInt32 ver=(v&FWVersion_ver_mask)>>FWVersion_ver_shift;
 
     errlogPrintf("Found version %u\n", ver);
 
@@ -387,52 +426,13 @@ bool checkUIOVersion(int vmin, int vmax, int *actual)
 static bool checkUIOVersion(int,int,int*) {return false;}
 #endif
 
-static
-int parsePCI(const char *loc, int *dom, int *b, int *d, int *f)
-{
-    unsigned X, B, D, F;
-
-    if(sscanf(loc, "%x:%x:%x.%x", &X, &B, &D, &F)==4) {
-
-    } else if(sscanf(loc, "%x:%x.%x", &B, &D, &F)==3) {
-        X = 0;
-    } else if(sscanf(loc, "%x:%x", &B, &D)==2) {
-        X = 0;
-        F = 0;
-    } else if(sscanf(loc, "%x", &B)==1) {
-        X = 0;
-        F = 0;
-    } else {
-        return 1;
-    }
-    *dom = X;
-    *b = B;
-    *d = D;
-    *f = F;
-    return 0;
-}
-
 void
-mrmEvrSetupPCI(const char* id,const char* pciid,int d,int f)
+mrmEvrSetupPCI(const char* id,const char* pcispec)
 {
 try {
     bus_configuration bus;
-    const EVRMRM::Config *conf;
 
     bus.busType = busType_pci;
-
-    if(!pciid || parsePCI(pciid, &bus.pci.domain, &bus.pci.bus,
-                          &bus.pci.device, &bus.pci.function))
-        throw std::invalid_argument("Unable to parse PCI ID string");
-
-    if(d!=0 || f!=0) {
-        printf("Warning: deprecated invocation of mrmEvrSetupPCI\n"
-               "Replace with:\n"
-               " mrmEvrSetupPCI(\"%s\", \"%s:%x.%x\")\n",
-               id, pciid, d, f);
-        bus.pci.device = d;
-        bus.pci.function = f;
-    }
 
     if(mrf::Object::getObject(id)){
         printf("Object ID %s already in use\n",id);
@@ -451,26 +451,34 @@ try {
 
     const epicsPCIDevice *cur=0;
 
-    if( devPCIFindDBDF(mrmevrs,
-                       bus.pci.domain, bus.pci.bus,
-                       bus.pci.device, bus.pci.function,
-                       &cur,0) ){
-        printf("PCI Device not found on %d:%d:%d.%d\n",
-               bus.pci.domain, bus.pci.bus,
-               bus.pci.device, bus.pci.function);
+    if( devPCIFindSpec(mrmevrs, pcispec, &cur,0) ){
+        printf("PCI Device not found on %s\n",
+               pcispec);
         return;
     }
 
-    printf("Device %s  %u:%u.%u\n",id,cur->bus,cur->device,cur->function);
+    printf("Device %s  %u:%u.%u slot=%s\n",id,cur->bus,cur->device,cur->function,cur->slot);
     printf("Using IRQ %u\n",cur->irq);
 
+    bus.pci.dev = cur;
+
+    const EVRMRM::Config *conf = NULL;
     switch(cur->id.sub_device) {
     case PCI_DEVICE_ID_MRF_PMCEVR_230: conf = &pmc_evr_230; break;
     case PCI_DEVICE_ID_MRF_PXIEVR_230: conf = &cpci_evr_230; break;
-    case PCI_DEVICE_ID_MRF_EVRTG_300:
-    case PCI_DEVICE_ID_MRF_EVRTG_300E: conf = &cpci_evrtg_300; break;
+    case PCI_DEVICE_ID_MRF_EVRTG_300:  conf = &cpci_evrtg_300; break;
     case PCI_DEVICE_ID_MRF_CPCIEVR300: conf = &cpci_evr_300; break;
-    default:
+    case PCI_DEVICE_ID_MRF_EVRMTCA300: conf = &mtca_evr_300; break;
+        // ambiguity
+    case PCI_DEVICE_ID_MRF_EVRTG_300E: // aka PCI_SUBDEVICE_ID_PCIE_EVR_300
+        switch (cur->id.device) {
+        case PCI_DEVICE_ID_EC_30: conf = &cpci_evrtg_300; break;
+        case PCI_DEVICE_ID_XILINX_DEV: conf = &pcie_evr_300; break;
+        }
+        break;
+    }
+
+    if(!conf) {
         printf("Unknown PCI EVR variant, making assumptions...\n");
         conf = &cpci_evr_unknown;
     }
@@ -557,6 +565,7 @@ try {
 
     case PCI_DEVICE_ID_EC_30:
     case PCI_DEVICE_ID_MRF_CPCIEVR300:
+    case PCI_DEVICE_ID_XILINX_DEV:
         /* the endianness the 300 series devices w/o PLX bridge
          * is a little tricky to setup.  byte order swapping is controlled
          * through the EVR's Control register and access to this register
@@ -600,32 +609,33 @@ try {
     if(devPCIConnectInterrupt(cur, &EVRMRM::isr_pci, arg, 0)){
         printf("Failed to install ISR\n");
         delete receiver;
+        return;
     }else{
         // Interrupts will be enabled during iocInit()
     }
 
 
 #ifndef __linux__
-    if(receiver->version()>=0xa) {
+    if(receiver->version()>=MRFVersion(0, 0xa)) {
         // RTOS doesn't need this, so always enable
         WRITE32(evr, PCI_MIE, EVG_MIE_ENABLE);
     }
 #else
-    if(receiver->version()>=0xa && kifacever>=2) {
+    if(receiver->version()>=MRFVersion(0, 0xa) && kifacever>=2) {
         // PCI master enable supported by firmware and kernel module.
         // the kernel will set this bit when devPCIEnableInterrupt() is called
     } else if(cur->id.device==PCI_DEVICE_ID_PLX_9030 ||
               cur->id.device==PCI_DEVICE_ID_PLX_9056) {
         // PLX based devices don't need special handling
         WRITE32(evr, PCI_MIE, EVG_MIE_ENABLE);
-    } else if(receiver->version()<0xa) {
+    } else if(receiver->version()<MRFVersion(0, 0xa)) {
         // old firmware and (maybe) old kernel module.
         // this will still work, so just complain
         errlogPrintf("Warning: this configuration of FW and SW is known to have race conditions in interrupt handling.\n"
                      "         Please consider upgrading to FW version 0xA.\n");
         if(kifacever<2)
             errlogPrintf("         Also upgrade the linux kernel module to interface version 2.");
-    } else if(receiver->version()>=0xa && kifacever<2) {
+    } else if(receiver->version()>=MRFVersion(0, 0xa) && kifacever<2) {
         // New firmware w/ old kernel module, this won't work
         throw std::runtime_error("FW version 0xA for this device requires a linux kernel module w/ interface version 2");
     } else {

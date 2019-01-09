@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef EVRMRMPULSER_H_INC
@@ -17,8 +17,9 @@
 
 class EVRMRM;
 
-class MRMPulser : public Pulser
+class MRMPulser : public mrf::ObjectInst<MRMPulser, Pulser>
 {
+    typedef mrf::ObjectInst<MRMPulser, Pulser> base_t;
     const epicsUInt32 id;
     EVRMRM& owner;
 
@@ -47,6 +48,9 @@ public:
 
     virtual bool polarityInvert() const;
     virtual void setPolarityInvert(bool);
+
+    epicsUInt32 masks() const;
+    void setMasks(epicsUInt32 inps);
 
     virtual MapType::type mappedSource(epicsUInt32 src) const;
     virtual void sourceSetMap(epicsUInt32 src,MapType::type action);

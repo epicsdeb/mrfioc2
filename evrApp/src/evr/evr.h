@@ -6,27 +6,27 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef EVR_HPP_INC
 #define EVR_HPP_INC
 
-#include "evr/util.h"
-#include "evr/output.h"
-#include "mrf/object.h"
-
 #include <epicsTypes.h>
 #include <epicsTime.h>
 #include <callback.h>
+#include <dbScan.h>
+
+#include "evr/output.h"
+#include "mrf/object.h"
 
 #include "configurationInfo.h"
 
-class epicsShareClass Pulser;
-class epicsShareClass PreScaler;
-class epicsShareClass Input;
-class epicsShareClass CML;
-class epicsShareClass DelayModuleEvr;
+class Pulser;
+class PreScaler;
+class Input;
+class CML;
+class DelayModuleEvr;
 
 enum TSSource {
   TSSourceInternal=0,
@@ -53,7 +53,8 @@ public:
   virtual std::string model() const=0;
 
   //! Firmware Version
-  virtual epicsUInt32 version() const=0;
+  virtual MRFVersion version() const=0;
+  std::string versionStr() const;
   //! Software Version
   virtual std::string versionSw() const;
 
@@ -68,27 +69,7 @@ public:
   virtual void enable(bool)=0;
   /*@}*/
 
-  //! Pulser id number is device specific
-  virtual Pulser* pulser(epicsUInt32)=0;
-  virtual const Pulser* pulser(epicsUInt32) const=0;
-
-  //! Output id number is device specific
-  virtual Output* output(OutputType otype,epicsUInt32 idx)=0;
-  virtual const Output* output(OutputType,epicsUInt32) const=0;
-
   virtual bool mappedOutputState() const=0;
-
-  //! Output id number is device specific
-  virtual Input* input(epicsUInt32 idx)=0;
-  virtual const Input* input(epicsUInt32) const=0;
-
-  //! Prescaler id number is device specific
-  virtual PreScaler* prescaler(epicsUInt32)=0;
-  virtual const PreScaler* prescaler(epicsUInt32) const=0;
-
-  //! CML Output id number is device specific
-  virtual CML* cml(epicsUInt32 idx)=0;
-  virtual const CML* cml(epicsUInt32) const=0;
 
   /** Hook to handle general event mapping table manipulation.
    *  Allows 'special' events only (ie heartbeat, log, led, etc)

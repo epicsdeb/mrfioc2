@@ -6,15 +6,31 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /**
- * @author Michael Davidsaver <mdavidsaver@bnl.gov>
+ * @author Michael Davidsaver <mdavidsaver@gmail.com>
  *
  * Defines a scheme for working with "properties".
- * A property being a pair of setter and getter methods
+ * A property being a some methods (eg. pair of setter and getter)
  * used to move a value in and out of an otherwise opaque
  * object.
  *
  * Properties are associated with a class by a property name
  * which can be used to retrieve a property.
+ *
+ * Method signatures supported
+ *
+ * get/set of scalar value P
+ *
+ *   void klass::setter(P v);
+ *   P klass::getter() const;
+ *
+ * get/set of array value P
+ *
+ *   void klass::setter(const P* vals, epicsUInt32 nelem);
+ *   epicsUInt32 klass::getter(P* vals, epicsUInt32 maxelem); // returns nelem
+ *
+ * A momentery/command
+ *
+ *   void klass::execer();
  *
  @internal
  *
@@ -54,6 +70,7 @@
 #else
 	#include <ostream>
 #endif
+#include <iostream>
 #include <sstream>
 #include <map>
 #include <set>
@@ -63,10 +80,27 @@
 #include <stdexcept>
 #include <typeinfo>
 
+#include <compilerDependencies.h>
 #include <epicsThread.h>
 #include <epicsTypes.h>
 
+#ifndef EPICS_UNUSED
+#  define EPICS_UNUSED
+#endif
+
 #include "mrfCommon.h"
+
+// when dset should signal alarm w/o printing a message
+class epicsShareClass alarm_exception : public std::exception
+{
+    const short sevr, stat;
+public:
+    explicit alarm_exception(short sevr = INVALID_ALARM, short stat = COMM_ALARM) : sevr(sevr), stat(stat) {}
+    virtual ~alarm_exception() throw() {}
+    virtual const char *what() throw();
+    inline short severity() const { return sevr; }
+    inline short status() const { return stat; }
+};
 
 namespace mrf {
 
@@ -74,7 +108,7 @@ namespace mrf {
 class epicsShareClass opNotImplemented : public std::runtime_error
 {
 public:
-    opNotImplemented(const std::string& m) : std::runtime_error(m) {}
+    explicit opNotImplemented(const std::string& m) : std::runtime_error(m) {}
 };
 
 /** @brief An un-typed property.
@@ -129,6 +163,14 @@ struct property<P[1]> : public propertyBase
      @returns The number of elements actual written
      */
     virtual epicsUInt32 get(P*, epicsUInt32) const=0;
+};
+
+//! @brief A momentary/command
+template<>
+struct property<void> : public propertyBase
+{
+    virtual ~property(){}
+    virtual void exec()=0;
 };
 
 namespace detail {
@@ -204,6 +246,30 @@ makeUnboundProperty(const char* n,
     return new unboundProperty<C,P[1]>(n,g,s);
 }
 
+//! @brief An un-bound momentary/command
+template<class C>
+class epicsShareClass unboundProperty<C,void> : public unboundPropertyBase<C>
+{
+public:
+    typedef void (C::*exec_t)();
+
+    const char * const name;
+    exec_t const execer;
+
+    unboundProperty(const char *n, exec_t e) :name(n), execer(e) {}
+    virtual const std::type_info& type() const{return typeid(void);}
+    inline virtual property<void>* bind(C*);
+};
+
+template<class C>
+static inline
+unboundProperty<C,void>*
+makeUnboundProperty(const char* n,
+                    void (C::*e)())
+{
+    return new unboundProperty<C,void>(n,e);
+}
+
 //! @brief final scalar implementation
 template<class C, typename P>
 class epicsShareClass  propertyInstance : public property<P>
@@ -216,9 +282,10 @@ public:
     :inst(c)
     ,prop(p)
   {}
+  virtual ~propertyInstance() {}
 
   virtual const char* name() const{return prop.name;}
-  virtual const std::type_info& type() const{return typeid(P);}
+  virtual const std::type_info& type() const{return prop.type();}
   virtual void set(P v)
   {
       if(!prop.setter)
@@ -256,9 +323,10 @@ public:
     :inst(c)
     ,prop(p)
   {}
+  virtual ~propertyInstance() {}
 
   virtual const char* name() const{return prop.name;}
-  virtual const std::type_info& type() const{return typeid(P[1]);}
+  virtual const std::type_info& type() const{return prop.type();}
   virtual void   set(const P* a, epicsUInt32 l)
     { (inst->*(prop.setter))(a,l); }
   virtual epicsUInt32 get(P* a, epicsUInt32 l) const
@@ -271,6 +339,32 @@ property<P[1]>*
 unboundProperty<C,P[1]>::bind(C* inst)
 {
     return new propertyInstance<C,P[1]>(inst,*this);
+}
+
+template<class C>
+class epicsShareClass propertyInstance<C,void> : public property<void>
+{
+    C *inst;
+    unboundProperty<C,void> prop;
+public:
+
+    propertyInstance(C *c, const unboundProperty<C,void>& p)
+        :inst(c), prop(p) {}
+    virtual ~propertyInstance() {}
+
+    virtual const char* name() const{return prop.name;}
+    virtual const std::type_info& type() const{return prop.type();}
+    virtual void exec() {
+        (inst->*prop.execer)();
+    }
+};
+
+//! Binder for momentary/command instances
+template<class C>
+property<void>*
+unboundProperty<C,void>::bind(C* inst)
+{
+    return new propertyInstance<C,void>(inst,*this);
 }
 
 } // namespace detail
@@ -308,20 +402,32 @@ public:
 
     virtual propertyBase* getPropertyBase(const char*, const std::type_info&)=0;
     template<typename P>
-    std::auto_ptr<property<P> > getProperty(const char* pname)
+    mrf::auto_ptr<property<P> > getProperty(const char* pname)
     {
         propertyBase *b=getPropertyBase(pname, typeid(P));
         if(!b)
-            return std::auto_ptr<property<P> >();
+            return mrf::auto_ptr<property<P> >();
         property<P> *p=dynamic_cast<property<P> *>(b);
         if(!p)
-            return std::auto_ptr<property<P> >();
-        return std::auto_ptr<property<P> >(p);
+            return mrf::auto_ptr<property<P> >();
+        return mrf::auto_ptr<property<P> >(p);
     }
 
     virtual void visitProperties(bool (*)(propertyBase*, void*), void*)=0;
 
-    static Object* getObject(const std::string&);
+    //! Fetch named Object
+    //! returns NULL if not found
+    static Object* getObject(const std::string& name);
+
+    typedef std::map<std::string, std::string> create_args_t;
+
+    //! Fetch or or create named Object
+    //! Throws an exception if creation fails
+    static Object* getCreateObject(const std::string& name, const std::string& klass, const create_args_t& args = create_args_t());
+
+    typedef Object* (*create_factory_t)(const std::string& name, const std::string& klass, const create_args_t& args);
+
+    static void addFactory(const std::string& klass, create_factory_t fn);
 
     static void visitObjects(bool (*)(Object*, void*), void*);
 };
@@ -349,43 +455,42 @@ public:
    OBJECT_END(mycls)
  @endcode
  */
-template<class C>
-class ObjectInst : public Object
+template<class C, typename Base = Object>
+class ObjectInst : public Base
 {
     typedef std::multimap<std::string, detail::unboundPropertyBase<C>*> m_props_t;
     static m_props_t *m_props;
-    static void initObject(void*);
-    static epicsThreadOnceId initId;
+public:
+    static int initObject();
 protected:
-    ObjectInst(const std::string& n) : Object(n) {}
-    virtual ~ObjectInst(){};
+    explicit ObjectInst(const std::string& n) : Base(n) {}
+    template<typename A>
+    ObjectInst(const std::string& n, A a) : Base(n, a) {}
+    virtual ~ObjectInst(){}
 public:
 
     virtual propertyBase* getPropertyBase(const char* pname, const std::type_info& ptype)
     {
         std::string emsg;
-        epicsThreadOnce(&initId, &initObject, (void*)&emsg);
         if(!m_props)
             throw std::runtime_error(emsg);
         typename m_props_t::const_iterator it=m_props->lower_bound(pname),
                                           end=m_props->upper_bound(pname);
         for(;it!=end;++it) {
             if(it->second->type()==ptype)
-                break;
+                return it->second->bind(static_cast<C*>(this));
         }
-        if(it==end)
-            return 0;
-        return it->second->bind(static_cast<C*>(this));
+        // continue checking for Base class properties
+        return Base::getPropertyBase(pname, ptype);
     }
 
-    void visitProperties(bool (*cb)(propertyBase*, void*), void* arg)
+    virtual void visitProperties(bool (*cb)(propertyBase*, void*), void* arg)
     {
         std::string emsg;
-        epicsThreadOnce(&initId, &initObject, (void*)&emsg);
         if(!m_props)
             throw std::runtime_error(emsg);
 
-        std::auto_ptr<propertyBase> cur;
+        mrf::auto_ptr<propertyBase> cur;
         for(typename m_props_t::const_iterator it=m_props->begin();
             it!=m_props->end(); ++it)
         {
@@ -395,16 +500,17 @@ public:
             if(!(*cb)(cur.get(), arg))
                 break;
         }
+        Base::visitProperties(cb, arg);
     }
 };
 
-#define OBJECT_BEGIN(klass) namespace mrf {\
-template class ObjectInst<klass>;\
-template<> ObjectInst<klass>::m_props_t* ObjectInst<klass>::m_props = 0; \
-template<> epicsThreadOnceId ObjectInst<klass>::initId = EPICS_THREAD_ONCE_INIT; \
-template<> void ObjectInst<klass>::initObject(void * rmsg) { \
-    std::string *emsg=static_cast<std::string*>(rmsg); \
-    try { std::auto_ptr<m_props_t> props(new m_props_t); {
+#define OBJECT_BEGIN2(klass, Base) namespace mrf {\
+template<> ObjectInst<klass, Base>::m_props_t* ObjectInst<klass, Base>::m_props = 0; \
+template<> int ObjectInst<klass, Base>::initObject() { \
+    const char *klassname = #klass; (void)klassname; \
+    try { mrf::auto_ptr<m_props_t> props(new m_props_t); {
+
+#define OBJECT_BEGIN(klass) OBJECT_BEGIN2(klass, Object)
 
 #define OBJECT_PROP1(NAME, GET) \
     props->insert(std::make_pair(static_cast<const char*>(NAME), detail::makeUnboundProperty(NAME, GET) ))
@@ -412,13 +518,15 @@ template<> void ObjectInst<klass>::initObject(void * rmsg) { \
 #define OBJECT_PROP2(NAME, GET, SET) \
     props->insert(std::make_pair(static_cast<const char*>(NAME), detail::makeUnboundProperty(NAME, GET, SET) ))
 
+#define OBJECT_FACTORY(FN) addFactory(klassname, FN)
+
 #define OBJECT_END(klass) \
-} m_props = props.release(); \
+} m_props = props.release(); return 1; \
 } catch(std::exception& e) { \
-std::ostringstream strm; \
-strm<<"Failed to build property table for "<<typeid(klass).name()<<"\n"<<e.what()<<"\n"; \
-*emsg=strm.str(); \
-  }}}
+std::cerr<<"Failed to build property table for "<<typeid(klass).name()<<"\n"<<e.what()<<"\n"; \
+throw std::runtime_error("Failed to build"); \
+  }}} \
+static int done_##klass EPICS_UNUSED = klass::initObject();
 
 } // namespace mrf
 

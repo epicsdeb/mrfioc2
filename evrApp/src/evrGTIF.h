@@ -5,7 +5,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef EVRGTIF_H_INC
@@ -24,10 +24,6 @@ extern "C" {
  * C interface to the timestamp supply functions
  * of the EVR interface for use with generalTime.
  */
-
-/** @brief Priority given to EVR's timestamp/event provider
- */
-#define ER_PROVIDER_PRIORITY 50
 
 /* Must be called before other functions.  Returns non-zero on error */
 epicsShareFunc

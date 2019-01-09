@@ -6,7 +6,7 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #include <stdlib.h>
@@ -86,7 +86,7 @@ static long add_record_waveform(dbCommon *praw)
 try {
   assert(prec->inp.type==INST_IO);
 
-  std::auto_ptr<s_priv> paddr(new s_priv);
+  mrf::auto_ptr<s_priv> paddr(new s_priv);
   paddr->buf=NULL;
   paddr->blen=0;
   paddr->proto = 0xff00;
@@ -130,7 +130,7 @@ static long del_record_waveform(dbCommon *praw)
     long ret=0;
     if (!praw->dpvt) return 0;
     try {
-        std::auto_ptr<s_priv> paddr((s_priv*)praw->dpvt);
+        mrf::auto_ptr<s_priv> paddr(static_cast<s_priv*>(praw->dpvt));
         praw->dpvt = 0;
 
         paddr->priv->dataRxDeleteReceive(datarx, praw);
@@ -150,7 +150,7 @@ void datarx(void *arg, epicsStatus ok,
             epicsUInt32 len, const epicsUInt8* buf)
 {
     waveformRecord* prec=(waveformRecord*)arg;
-    s_priv *paddr=(s_priv*)prec->dpvt;
+    s_priv *paddr=static_cast<s_priv*>(prec->dpvt);
     
     //check protocol id
     if (paddr->proto != 0xff00 && paddr->proto != buf[0]) return;
@@ -179,7 +179,7 @@ void datarx(void *arg, epicsStatus ok,
 
 static long write_waveform(waveformRecord* prec)
 {
-  if (!prec->dpvt) return -1;
+  if (!prec->dpvt) {(void)recGblSetSevr(prec, COMM_ALARM, INVALID_ALARM); return -1; }
 try {
   s_priv *paddr=static_cast<s_priv*>(prec->dpvt);
 

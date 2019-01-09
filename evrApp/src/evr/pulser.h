@@ -5,13 +5,12 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef PULSER_HPP_INC
 #define PULSER_HPP_INC
 
-#include "evr/util.h"
 #include "mrf/object.h"
 
 #include <epicsTypes.h>
@@ -36,10 +35,10 @@ struct MapType {
  * Gated mode has two event codes.  One is sets the output
  * high and the second resets the output low.
  */
-class epicsShareClass Pulser : public mrf::ObjectInst<Pulser>, public IOStatus
+class epicsShareClass Pulser : public mrf::ObjectInst<Pulser>
 {
 public:
-  Pulser(const std::string& n) : mrf::ObjectInst<Pulser>(n) {}
+  explicit Pulser(const std::string& n) : mrf::ObjectInst<Pulser>(n) {}
   virtual ~Pulser()=0;
 
   /**\defgroup ena Enable/disable pulser output.

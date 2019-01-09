@@ -5,13 +5,12 @@
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /*
- * Author: Michael Davidsaver <mdavidsaver@bnl.gov>
+ * Author: Michael Davidsaver <mdavidsaver@gmail.com>
  */
 
 #ifndef CMLSHORT_HPP_INC
 #define CMLSHORT_HPP_INC
 
-#include "evr/util.h"
 #include "mrf/object.h"
 
 #include <epicsTypes.h>
@@ -23,7 +22,7 @@ enum cmlMode {
   cmlModeInvalid
 };
 
-class epicsShareClass CML : public mrf::ObjectInst<CML>, public IOStatus
+class epicsShareClass CML : public mrf::ObjectInst<CML>
 {
 public:
   enum pattern {
@@ -34,7 +33,7 @@ public:
     patternLow
   };
 
-  CML(const std::string& n) : mrf::ObjectInst<CML>(n) {}
+  explicit CML(const std::string& n) : mrf::ObjectInst<CML>(n) {}
   virtual ~CML()=0;
 
   virtual cmlMode mode() const=0;
