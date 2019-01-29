@@ -1,6 +1,6 @@
 Source: mrfioc2
 Section: devel
-Priority: extra
+Priority: optional
 Maintainer: Martin Konrad <konrad@frib.msu.edu>
 Build-Depends: debhelper (>= 9.20141010), dpkg-dev (>= 1.17.14),
                epics-debhelper (>= 6~), epics-dev (>= 3.14.11-2),
@@ -12,7 +12,9 @@ Build-Depends: debhelper (>= 9.20141010), dpkg-dev (>= 1.17.14),
                dkms,
 XS-Rtems-Build-Depends: rtems-epics, rtems-devlib2 (>=2.8)
 X-Epics-Targets: .*
-Standards-Version: 3.8.0
+Standards-Version: 4.3.0
+Vcs-Git: https://github.com/epicsdeb/mrfioc2.git
+Vcs-Browser: https://github.com/epicsdeb/mrfioc2
 Homepage: http://epics.sf.net/mrfioc2
 
 Package: libmrfioc2.8
