@@ -1,3 +1,12 @@
+mrfioc2 (2.2.0-3) unstable; urgency=medium
+
+  * Add missing dependency
+  * Bump up debhelper compatibility level to 9
+  * Update standards-version to 4.3.0
+  * Add patch fixing crash when calling time2ntp IOC shell fct
+
+ -- Martin Konrad <konrad@frib.msu.edu>  Thu, 21 Feb 2019 13:45:59 -0500
+
 mrfioc2 (2.2.0-2) unstable; urgency=medium
 
   * Use build profile to enable RTEMS cross build
