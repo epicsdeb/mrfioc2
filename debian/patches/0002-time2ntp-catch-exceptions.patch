@@ -1,0 +1,91 @@
+From: Michael Davidsaver <mdavidsaver@gmail.com>
+Date: Tue, 29 Jan 2019 19:41:44 -0800
+Subject: time2ntp() catch exceptions
+
+---
+ evrApp/src/ntpShm.cpp | 66 +++++++++++++++++++++++++++------------------------
+ 1 file changed, 35 insertions(+), 31 deletions(-)
+
+diff --git a/evrApp/src/ntpShm.cpp b/evrApp/src/ntpShm.cpp
+index 8f5dbc0..c572e9f 100644
+--- a/evrApp/src/ntpShm.cpp
++++ b/evrApp/src/ntpShm.cpp
+@@ -264,43 +264,47 @@ static void ntpshmhooks(initHookState state)
+ 
+ void time2ntp(const char* evrname, int segid, int event)
+ {
+-    if(event==0)
+-        event = MRF_EVENT_TS_COUNTER_RST;
+-    else if(event<=0 || event >255) {
+-        fprintf(stderr, "Invalid 1Hz event # %d\n", event);
+-        return;
+-    }
+-    if(segid<0 || segid>4) {
+-        fprintf(stderr, "Invalid segment ID %d\n", segid);
+-        return;
+-    }
+-    mrf::Object *obj = mrf::Object::getObject(evrname);
+-    if(!obj) {
+-        fprintf(stderr, "Unknown EVR: %s\n", evrname);
+-        return;
+-    }
++    try {
++        if(event==0)
++            event = MRF_EVENT_TS_COUNTER_RST;
++        else if(event<=0 || event >255) {
++            fprintf(stderr, "Invalid 1Hz event # %d\n", event);
++            return;
++        }
++        if(segid<0 || segid>4) {
++            fprintf(stderr, "Invalid segment ID %d\n", segid);
++            return;
++        }
++        mrf::Object *obj = mrf::Object::getObject(evrname);
++        if(!obj) {
++            fprintf(stderr, "Unknown EVR: %s\n", evrname);
++            return;
++        }
+ 
+-    EVR *evr = dynamic_cast<EVR*>(obj);
+-    if(!evr) {
+-        fprintf(stderr, "\"%s\" is not an EVR\n", evrname);
+-        return;
+-    }
++        EVR *evr = dynamic_cast<EVR*>(obj);
++        if(!evr) {
++            fprintf(stderr, "\"%s\" is not an EVR\n", evrname);
++            return;
++        }
+ 
+-    epicsThreadOnce(&ntponce, &ntpshminit, 0);
++        epicsThreadOnce(&ntponce, &ntpshminit, 0);
+ 
+-    epicsMutexMustLock(ntpShm.ntplock);
++        epicsMutexMustLock(ntpShm.ntplock);
+ 
+-    if(ntpShm.evr) {
+-        epicsMutexUnlock(ntpShm.ntplock);
+-        fprintf(stderr, "ntpShm already initialized.\n");
+-        return;
+-    }
++        if(ntpShm.evr) {
++            epicsMutexUnlock(ntpShm.ntplock);
++            fprintf(stderr, "ntpShm already initialized.\n");
++            return;
++        }
+ 
+-    ntpShm.event = event;
+-    ntpShm.evr = evr;
+-    ntpShm.segid = segid;
++        ntpShm.event = event;
++        ntpShm.evr = evr;
++        ntpShm.segid = segid;
+ 
+-    epicsMutexUnlock(ntpShm.ntplock);
++        epicsMutexUnlock(ntpShm.ntplock);
++    } catch(std::exception& e) {
++        fprintf(stderr, "Error: %s\n", e.what());
++    }
+ }
+ 
+ static const iocshArg time2ntpArg0 = { "evr name",iocshArgString};
